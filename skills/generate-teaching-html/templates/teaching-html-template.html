@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>教学演示模板</title>
+<style>
+:root { --bg: #f8f9fb; --card: #fff; --primary: #3b6ff5; --text: #2c3e50; --light: #eef2ff; --radius: 12px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; font-size: 16px; padding-bottom: 40px; }
+header { background: linear-gradient(135deg, var(--primary), #5b4fcf); color: #fff; padding: 24px 20px 20px; text-align: center; }
+header h1 { font-size: 1.6em; letter-spacing: 0.5px; }
+header p { opacity: 0.9; margin-top: 6px; font-size: 0.95em; }
+#discipline-nav { display: flex; justify-content: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #e8ecf0; flex-wrap: wrap; }
+#discipline-nav button { padding: 7px 18px; border: 2px solid #dde3ea; border-radius: 20px; background: #fff; cursor: pointer; font-size: 0.9em; transition: all 0.2s; }
+#discipline-nav button.active { border-color: var(--primary); background: var(--light); color: var(--primary); font-weight: 600; }
+#step-navigation { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 14px 20px; }
+#step-navigation button { padding: 8px 22px; border: none; border-radius: 8px; background: var(--primary); color: #fff; cursor: pointer; font-size: 0.95em; }
+#step-navigation button:disabled { background: #c4cdda; cursor: default; }
+#step-indicator { font-weight: 600; min-width: 100px; text-align: center; }
+main { max-width: 860px; margin: 0 auto; padding: 20px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 18px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+.card h2 { font-size: 1.25em; border-left: 4px solid var(--primary); padding-left: 12px; margin-bottom: 12px; }
+.card h3 { margin: 12px 0 6px; font-size: 1.05em; }
+.formula-block { background: #fafbfc; border: 1px solid #e8ecf0; border-radius: 8px; padding: 16px 20px; margin: 10px 0; overflow-x: auto; font-size: 1.15em; }
+.formula-block.highlight { border-color: var(--primary); background: var(--light); }
+.step-content { display: none; }
+.step-content.active { display: block; }
+#interactive-controls { max-width: 860px; margin: 0 auto; padding: 0 20px 10px; }
+#interactive-controls label { display: block; margin: 8px 0 4px; font-weight: 600; font-size: 0.9em; }
+#interactive-controls input[type=range] { width: 100%; max-width: 400px; }
+#interactive-controls .value-display { display: inline-block; margin-left: 10px; color: var(--primary); font-weight: 600; }
+details { margin: 10px 0; }
+summary { cursor: pointer; color: var(--primary); font-weight: 600; padding: 4px 0; }
+footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="topic-title">[学科] — [知识点名称]</h1>
+  <p id="topic-subtitle">分步讲解原理与推导过程</p>
+</header>
+
+<nav id="discipline-nav">
+  <button data-discipline="math" class="active">数学</button>
+  <button data-discipline="physics">物理</button>
+  <button data-discipline="chemistry">化学</button>
+  <button data-discipline="cs">计算机</button>
+</nav>
+
+<div id="step-navigation">
+  <button id="prev-step" disabled>&laquo; 上一步</button>
+  <span id="step-indicator"><span id="step-num">1</span> / <span id="step-total">4</span></span>
+  <button id="next-step">下一步 &raquo;</button>
+</div>
+
+<main id="content-area">
+
+  <!-- ===== 数学 ===== -->
+  <div id="discipline-math" class="discipline-panel active">
+
+    <div class="card step-content active" data-step="1" data-discipline="math">
+      <h2>步骤 1：问题引入</h2>
+      <p>考虑一般形式的一元二次方程：</p>
+      <div class="formula-block">$$ ax^2 + bx + c = 0 \quad (a \neq 0) $$</div>
+      <p>目标：找到 <strong>x</strong> 的通解公式，即用系数 a, b, c 表达 x。</p>
+      <details><summary>为什么需要通解公式？</summary><p>对于任意给定的一元二次方程，如果每次都手工配平方，效率很低。通解公式使我们可以代入 a, b, c 直接计算结果。</p></details>
+    </div>
+
+    <div class="card step-content" data-step="2" data-discipline="math">
+      <h2>步骤 2：移项与系数化一</h2>
+      <p>将常数项移到等式右边：</p>
+      <div class="formula-block">$$ ax^2 + bx = -c $$</div>
+      <p>两边同时除以 a（因为 a ≠ 0）：</p>
+      <div class="formula-block highlight">$$ x^2 + \frac{b}{a}x = -\frac{c}{a} $$</div>
+      <p>现在方程变成了 <code>x² + px = q</code> 的形式，这是配平方的标准起点。</p>
+    </div>
+
+    <div class="card step-content" data-step="3" data-discipline="math">
+      <h2>步骤 3：配平方</h2>
+      <p>配方原理：<code>x² + px</code> 加上 <code>(p/2)²</code> 后成为完全平方 <code>(x + p/2)²</code>。</p>
+      <p>这里 p = b/a，所以需要在等式两边同时加上 <code>(b/(2a))²</code>：</p>
+      <div class="formula-block">$$ x^2 + \frac{b}{a}x + \left(\frac{b}{2a}\right)^2 = -\frac{c}{a} + \left(\frac{b}{2a}\right)^2 $$</div>
+      <p>左边可写成完全平方：</p>
+      <div class="formula-block highlight">$$ \left(x + \frac{b}{2a}\right)^2 = \frac{b^2 - 4ac}{4a^2} $$</div>
+    </div>
+
+    <div class="card step-content" data-step="4" data-discipline="math">
+      <h2>步骤 4：开方求解</h2>
+      <p>对等式两边开平方：</p>
+      <div class="formula-block">$$ x + \frac{b}{2a} = \pm\sqrt{\frac{b^2 - 4ac}{4a^2}} = \pm\frac{\sqrt{b^2 - 4ac}}{2|a|} $$</div>
+      <p>最终得到一元二次方程求根公式：</p>
+      <div class="formula-block highlight">$$ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a} $$</div>
+      <p>其中 <strong>Δ = b² - 4ac</strong> 称为判别式，决定根的性质：</p>
+      <ul><li>Δ &gt; 0 → 两个不等实根</li><li>Δ = 0 → 两个相等实根</li><li>Δ &lt; 0 → 两个共轭复根</li></ul>
+    </div>
+
+  </div>
+
+  <!-- ===== 物理 ===== -->
+  <div id="discipline-physics" class="discipline-panel" style="display:none">
+
+    <div class="card step-content" data-step="1" data-discipline="physics">
+      <h2>步骤 1：牛顿第二定律</h2>
+      <p>牛顿第二定律描述了力与运动的关系：</p>
+      <div class="formula-block">$$ F = ma $$</div>
+      <p>F — 合外力（N），m — 物体质量（kg），a — 加速度（m/s²）</p>
+      <p>这是经典力学的核心方程。今天我们从它出发，推导匀加速直线运动的全套公式。</p>
+    </div>
+
+    <div class="card step-content" data-step="2" data-discipline="physics">
+      <h2>步骤 2：从力到加速度</h2>
+      <p>如果合外力 F 是常数，则加速度 a 也是常数：</p>
+      <div class="formula-block">$$ a = \frac{F}{m} = \text{const} $$</div>
+      <p>加速度是速度对时间的导数：<code>a = dv/dt</code>。积分可得：</p>
+      <div class="formula-block highlight">$$ v(t) = v_0 + at $$</div>
+      <p>其中 v₀ 是初始速度（t=0 时的速度）。</p>
+    </div>
+
+    <div class="card step-content" data-step="3" data-discipline="physics">
+      <h2>步骤 3：从速度到位移</h2>
+      <p>速度是位移对时间的导数：<code>v = dx/dt</code>。对 v(t) 积分：</p>
+      <div class="formula-block">$$ x(t) = \int_0^t (v_0 + a\tau)\,d\tau = v_0 t + \frac{1}{2}at^2 $$</div>
+      <p>如果初始位置为 x₀：</p>
+      <div class="formula-block highlight">$$ x(t) = x_0 + v_0 t + \frac{1}{2}at^2 $$</div>
+    </div>
+
+    <div class="card step-content" data-step="4" data-discipline="physics">
+      <h2>步骤 4：速度-位移关系</h2>
+      <p>消去时间 t 可得到不依赖时间的速度-位移关系：</p>
+      <div class="formula-block">$$ v^2 = v_0^2 + 2a(x - x_0) $$</div>
+      <p>这就是匀加速直线运动的三公式：</p>
+      <div class="formula-block highlight">$$ \begin{aligned} v &= v_0 + at \\ x &= x_0 + v_0 t + \frac{1}{2}at^2 \\ v^2 &= v_0^2 + 2a(x - x_0) \end{aligned} $$</div>
+    </div>
+
+  </div>
+
+  <!-- ===== 化学 ===== -->
+  <div id="discipline-chemistry" class="discipline-panel" style="display:none">
+
+    <div class="card step-content" data-step="1" data-discipline="chemistry">
+      <h2>步骤 1：酸碱中和反应</h2>
+      <p>盐酸与氢氧化钠的反应是最经典的酸碱中和：</p>
+      <div class="formula-block">$$ \ce{HCl + NaOH -> NaCl + H2O} $$</div>
+      <p>酸（HCl 提供 H⁺）+ 碱（NaOH 提供 OH⁻）→ 盐 + 水。</p>
+    </div>
+
+    <div class="card step-content" data-step="2" data-discipline="chemistry">
+      <h2>步骤 2：离子方程视角</h2>
+      <p>在溶液中，强电解质完全电离。写出离子方程式：</p>
+      <div class="formula-block">$$ \ce{H+ + Cl- + Na+ + OH- -> Na+ + Cl- + H2O} $$</div>
+      <p>Na⁺ 和 Cl⁻ 在反应前后不变（旁观离子），消去后得到净离子方程式：</p>
+      <div class="formula-block highlight">$$ \ce{H+ + OH- -> H2O} $$</div>
+      <p>这揭示了酸碱中和的本质：H⁺ 与 OH⁻ 结合生成水。</p>
+    </div>
+
+    <div class="card step-content" data-step="3" data-discipline="chemistry">
+      <h2>步骤 3：氧化还原配平</h2>
+      <p>以高锰酸钾氧化二价铁为例：</p>
+      <div class="formula-block">$$ \ce{MnO4- + Fe^{2+} + H+ -> Mn^{2+} + Fe^{3+} + H2O} $$</div>
+      <p>半反应法配平：</p>
+      <p><strong>还原半反应：</strong></p>
+      <div class="formula-block">$$ \ce{MnO4- + 8H+ + 5e- -> Mn^{2+} + 4H2O} $$</div>
+      <p><strong>氧化半反应：</strong></p>
+      <div class="formula-block">$$ \ce{Fe^{2+} -> Fe^{3+} + e-} $$</div>
+      <p>电子数均衡（×5），合并得：</p>
+      <div class="formula-block highlight">$$ \ce{MnO4- + 5Fe^{2+} + 8H+ -> Mn^{2+} + 5Fe^{3+} + 4H2O} $$</div>
+    </div>
+
+  </div>
+
+  <!-- ===== 计算机 ===== -->
+  <div id="discipline-cs" class="discipline-panel" style="display:none">
+
+    <div class="card step-content" data-step="1" data-discipline="cs">
+      <h2>步骤 1：什么是冒泡排序？</h2>
+      <p>冒泡排序（Bubble Sort）是最简单的排序算法之一。其核心思想是：</p>
+      <p><strong>相邻元素两两比较，逆序则交换。每一轮将当前最大的元素"浮"到最后。</strong></p>
+    </div>
+
+    <div class="card step-content" data-step="2" data-discipline="cs">
+      <h2>步骤 2：第一轮演示</h2>
+      <p>初始数组：<code id="bs-arr-2">[5, 3, 8, 1, 2]</code></p>
+      <div class="formula-block" id="bs-steps-2"></div>
+      <p>第一轮结束后，最大值 8 已到达末尾位置。</p>
+    </div>
+
+    <div class="card step-content" data-step="3" data-discipline="cs">
+      <h2>步骤 3：完整过程</h2>
+      <p>初始数组：<code id="bs-arr-3">[5, 3, 8, 1, 2]</code></p>
+      <div class="formula-block" id="bs-steps-3"></div>
+      <p>共 4 轮完成排序。</p>
+    </div>
+
+    <div class="card step-content" data-step="4" data-discipline="cs">
+      <h2>步骤 4：复杂度分析</h2>
+      <div class="formula-block">$$ \text{最坏时间复杂度：} O(n^2) \quad \text{最好时间复杂度：} O(n) \quad \text{平均：} O(n^2) $$</div>
+      <p>空间复杂度 O(1)（原地排序）。冒泡排序简单直观，但对于大数据集效率低，通常用作教学示例。</p>
+    </div>
+
+  </div>
+
+</main>
+
+<div id="interactive-controls">
+  <!-- 物理参数滑块 -->
+  <div id="physics-controls" style="display:none">
+    <h3>交互参数</h3>
+    <label>初始速度 v₀ (m/s)：<span class="value-display" id="v0-val">0</span></label>
+    <input type="range" id="v0-slider" min="0" max="20" value="0" step="1">
+    <label>加速度 a (m/s²)：<span class="value-display" id="a-val">2</span></label>
+    <input type="range" id="a-slider" min="0" max="10" value="2" step="0.5">
+    <label>时间 t (s)：<span class="value-display" id="t-val">3</span></label>
+    <input type="range" id="t-slider" min="0" max="10" value="3" step="0.5">
+  </div>
+</div>
+
+<footer><p>生成工具：Trae Solo | 可离线使用</p></footer>
+
+<!-- CDN fallback system -->
+<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.css"
+      onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'">
+<script>
+var KA_TEX_CSS = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.css';
+var KA_TEX_CSS_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+var KA_TEX_JS = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.js';
+var KA_TEX_JS_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+var KA_TEX_AR = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/auto-render.min.js';
+var KA_TEX_AR_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js';
+var KA_TEX_MH = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/mhchem.min.js';
+var KA_TEX_MH_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js';
+</script>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.js"
+        onerror="this.onerror=null;this.src=KA_TEX_JS_FB"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/auto-render.min.js"
+        onerror="this.onerror=null;this.src=KA_TEX_AR_FB"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/mhchem.min.js"
+        onerror="this.onerror=null;this.src=KA_TEX_MH_FB"></script>
+
+<script>
+// ========== Render formulas ==========
+function renderAllFormulas() {
+  if (typeof renderMathInElement === 'function') {
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ],
+      strict: false,
+      trust: true
+    });
+  }
+}
+
+// ========== Discipline switching ==========
+var currentDiscipline = 'math';
+var currentStep = 1;
+
+document.querySelectorAll('#discipline-nav button').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('#discipline-nav button').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    currentDiscipline = this.dataset.discipline;
+    currentStep = 1;
+    showDiscipline(currentDiscipline);
+  });
+});
+
+function showDiscipline(d) {
+  document.querySelectorAll('.discipline-panel').forEach(function(p) { p.style.display = 'none'; });
+  var panel = document.getElementById('discipline-' + d);
+  if (panel) { panel.style.display = ''; }
+  document.getElementById('physics-controls').style.display = (d === 'physics') ? '' : 'none';
+  updateSteps(d);
+  goToStep(1, d);
+}
+
+function stepsFor(d) {
+  return document.querySelectorAll('#discipline-' + d + ' .step-content').length;
+}
+
+function updateSteps(d) {
+  document.getElementById('step-total').textContent = stepsFor(d);
+}
+
+// ========== Step navigation ==========
+function goToStep(n, d) {
+  var steps = document.querySelectorAll('#discipline-' + d + ' .step-content');
+  steps.forEach(function(s) { s.classList.remove('active'); });
+  if (n >= 1 && n <= steps.length) {
+    steps[n - 1].classList.add('active');
+    currentStep = n;
+  }
+  document.getElementById('step-num').textContent = currentStep;
+  document.getElementById('prev-step').disabled = (currentStep <= 1);
+  document.getElementById('next-step').disabled = (currentStep >= steps.length);
+  renderAllFormulas();
+}
+
+document.getElementById('prev-step').addEventListener('click', function() {
+  if (currentStep > 1) goToStep(currentStep - 1, currentDiscipline);
+});
+document.getElementById('next-step').addEventListener('click', function() {
+  var total = stepsFor(currentDiscipline);
+  if (currentStep < total) goToStep(currentStep + 1, currentDiscipline);
+});
+
+// ========== Bubble sort visualization ==========
+function bubbleSortVis(arr) {
+  var lines = [];
+  var a = arr.slice();
+  var n = a.length;
+  for (var i = 0; i < n - 1; i++) {
+    for (var j = 0; j < n - 1 - i; j++) {
+      var op = a[j] + ' vs ' + a[j + 1];
+      if (a[j] > a[j + 1]) {
+        var tmp = a[j]; a[j] = a[j + 1]; a[j + 1] = tmp;
+        op += ' → 交换 → [' + a.join(', ') + ']';
+      } else {
+        op += ' → 不变 → [' + a.join(', ') + ']';
+      }
+      lines.push(op);
+    }
+    lines.push('— 第' + (i+1) + '轮结束：[' + a.join(', ') + ']');
+  }
+  return lines.join('<br>');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  renderAllFormulas();
+  updateSteps('math');
+  document.getElementById('step-num').textContent = '1';
+
+  // Physics sliders
+  var v0s = document.getElementById('v0-slider'), as = document.getElementById('a-slider'), ts = document.getElementById('t-slider');
+  [v0s, as, ts].forEach(function(s) {
+    if (!s) return;
+    s.addEventListener('input', function() {
+      var v0 = parseFloat(v0s.value), a = parseFloat(as.value), t = parseFloat(ts.value);
+      document.getElementById('v0-val').textContent = v0;
+      document.getElementById('a-val').textContent = a;
+      document.getElementById('t-val').textContent = t;
+    });
+  });
+});
+
+// Render after KaTeX loads
+setTimeout(renderAllFormulas, 800);
+</script>
+
+</body>
+</html>

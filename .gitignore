@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Node (for PptxGenJS templates etc.)
+node_modules/
+package-lock.json
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS temp
+Thumbs.db
+
+# Hermes local cache (not part of repo)
+.hermes/
+
+# Generated output
+*.pptx
