@@ -6,25 +6,7 @@ from __future__ import annotations
 import argparse, json, re
 from pathlib import Path
 
-DEFAULT_JOURNALS = [
-    "高等工程教育研究", "中国大学教学", "大学化学", "化学教育",
-    "高教学刊", "工业和信息化教育", "中国现代教育装备",
-    "高等建筑教育", "中国地质教育", "安徽工业大学学报",
-    "湖北民族大学学报", "天津理工大学学报", "商丘师范学院学报",
-    "食品工业", "化学教育(中英文)", "机械设计与制造工程",
-    "机电工程技术", "物联网技术", "陕西教育",
-    "纺织服装教育", "科教文汇", "教育研究",
-    "高等教育研究", "中国高教研究", "学位与研究生教育",
-]
-
 EXCLUDE_K12 = ["小学", "初中", "高中", "中学", "校本", "幼儿园", "学前"]
-
-DEFAULT_THEME_KEYWORDS = [
-    "工程实践", "实践教学", "产教融合", "OBE", "工程教育认证",
-    "新工科", "CDIO", "卓越工程师", "工程能力", "实践能力",
-    "人才培养模式", "教学改革", "PBL", "项目式", "混合式教学",
-    "工程训练", "创新人才", "产教", "工程思维", "校企",
-]
 
 
 def tokenize(text: str) -> list[str]:
@@ -43,19 +25,18 @@ def main() -> int:
     parser.add_argument("--max", type=int, default=20)
     parser.add_argument("--journal-list", default=None)
     parser.add_argument("--no-k12-filter", action="store_true")
+    parser.add_argument("--sort-by", default="citations",
+                        choices=["citations", "downloads", "relevance"])
     args = parser.parse_args()
 
     data = json.loads(Path(args.input).read_text(encoding="utf-8"))
     papers = data.get("papers", [])
 
-    journals = DEFAULT_JOURNALS
-    if args.journal_list:
-        journals = args.journal_list.split(",")
+    journals = args.journal_list.split(",") if args.journal_list else []
 
-    theme_kw = DEFAULT_THEME_KEYWORDS.copy()
+    theme_kw = []
     if args.topic:
-        extra = [t for t in re.split(r"[，,；;、]", args.topic) if len(t) >= 2]
-        theme_kw = list(set(theme_kw + extra))
+        theme_kw = [t for t in re.split(r"[，,；;、]", args.topic) if len(t) >= 2]
 
     selected = []
     for p in papers:
@@ -66,7 +47,7 @@ def main() -> int:
             print(f"  [K12] {title[:40]}...")
             continue
 
-        journal_ok = any(j in source for j in journals)
+        journal_ok = (not journals) or any(j in source for j in journals)
         relevance = sum(1 for kw in theme_kw if kw in title)
         topic_ok = relevance >= 1
 
@@ -85,6 +66,24 @@ def main() -> int:
                     print(f"  [++] [{p.get('year')}] {p['title'][:50]}... | {p['source']}")
 
     selected = selected[:args.max]
+
+    # 排序：始终先按相关性（已筛选入集的都 topic_ok），再按用户指定维度
+    # 先存下 relevance_score 供排序使用
+    for p in selected:
+        p["_score"] = sum(1 for kw in theme_kw if kw in p.get("title", "")) if theme_kw else 0
+
+    if args.sort_by == "citations":
+        selected.sort(key=lambda p: (p.get("_score", 0), p.get("citations") or 0), reverse=True)
+    elif args.sort_by == "downloads":
+        selected.sort(key=lambda p: (p.get("_score", 0), p.get("downloads") or 0), reverse=True)
+    # relevance: 纯按主题命中数排序
+    else:
+        selected.sort(key=lambda p: p.get("_score", 0), reverse=True)
+
+    # 清理临时字段
+    for p in selected:
+        p.pop("_score", None)
+
     id_map = {}
     for idx, p in enumerate(selected):
         new_id = f"cnki-{idx+1:03d}"

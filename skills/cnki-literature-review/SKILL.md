@@ -1,6 +1,6 @@
 ---
 name: cnki-literature-review
-version: 2.0.0
+version: 2.1.0
 description: "知网(CNKI)文献调研全流程：多关键词检索、PDF下载、全文提取、智能筛选与结构化综述。合并了agent-browser与literature-research的能力，支持Playwright脚本自动化和agent-browser交互浏览两种模式。适用于文献综述、论文调研、知网下载、学术检索、开题报告、研究现状梳理等场景。"
 metadata:
   requires:
@@ -150,15 +150,17 @@ agent-browser get text body > page.txt
 python3 scripts/curate.py \
   --input ./literature-review/search/candidates.json \
   --topic "工程实践教学" \
-  --max 20
+  --max 20 \
+  --sort-by citations
 ```
 
-筛选逻辑：**期刊质量评分 + 主题相关性评分** 双维度打分。
+筛选逻辑：**主题相关性评分**（从 `--topic` 拆分关键词匹配），可选叠加期刊质量过滤（`--journal-list`）。
 
-- 期刊列表可自定义（`--journal-list`），内置默认工程教育核心期刊 25+ 种
+- `--journal-list`：逗号分隔的目标期刊列表，传入后按期刊白名单过滤；不传则不做期刊过滤，仅按主题相关性打分
 - 自动过滤 K-12 学段论文（识别"小学""初中""高中""校本"等关键词）
 - 主题关键词自动从调研主题拆分，计算 relevance_score
-- Fallback 机制：若入选不足，放宽期刊限制，按主题相关性补录
+- Fallback 机制：若入选不足，放宽阈值，按主题相关性补录
+- `--sort-by`：最终排序依据（`citations` 被引 / `downloads` 下载 / `relevance` 主题相关性），默认 `citations`。排序始终以主题相关性为第一键（先保相关、再比质量），避免高被引但跑题的论文排在前面
 - **筛选后自动重新分配唯一 ID**（cnki-001 ~ cnki-N），彻底消除 ID 冲突
 
 ---

@@ -59,6 +59,12 @@ def parse_from_js(raw_data: list[dict], max_results: int) -> list[dict]:
 
         authors = [a.strip() for a in re.split(r"[;；,，]", authors_str) if a.strip()]
 
+        def _parse_int(s: str) -> int | None:
+            try:
+                return int(re.sub(r"[^\d]", "", s))
+            except (ValueError, TypeError):
+                return None
+
         papers.append({
             "id": f"cnki-{len(papers) + 1:03d}",
             "title": title,
@@ -67,6 +73,8 @@ def parse_from_js(raw_data: list[dict], max_results: int) -> list[dict]:
             "year": year,
             "url": href,
             "selected": False,
+            "citations": _parse_int(texts[5]) if len(texts) > 5 else None,
+            "downloads": _parse_int(texts[6]) if len(texts) > 6 else None,
         })
     return papers
 
