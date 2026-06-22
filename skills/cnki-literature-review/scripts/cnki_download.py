@@ -178,9 +178,19 @@ def url_looks_like_paid(url: str) -> bool:
     return host.endswith("cnki.net") and path.startswith("/bar/fee_")
 
 
+def url_looks_like_paid_asset(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    return host.endswith("cnki.net") and path.startswith("/gw/api/get/pdf/ads/")
+
+
 def page_has_paid_marker(page) -> bool:
     try:
-        if url_looks_like_paid(page.url):
+        if url_looks_like_paid(page.url) or url_looks_like_paid_asset(page.url):
             return True
     except Exception:
         pass
@@ -259,6 +269,7 @@ def wait_for_verification(page, verify_wait: int) -> bool:
 def click_download_candidate(page, locator, out_path: Path) -> str:
     downloads = []
     popups = []
+    paid_requests = []
 
     def on_download(download) -> None:
         downloads.append(download)
@@ -267,23 +278,37 @@ def click_download_candidate(page, locator, out_path: Path) -> str:
         popups.append(popup)
         popup.on("download", on_download)
 
+    def on_request(request) -> None:
+        try:
+            if url_looks_like_paid(request.url) or url_looks_like_paid_asset(request.url):
+                paid_requests.append(request.url)
+        except Exception:
+            pass
+
     try:
         page.on("download", on_download)
         page.on("popup", on_popup)
+        page.context.on("page", on_popup)
+        page.context.on("request", on_request)
         locator.click(timeout=5000)
 
         deadline = time.monotonic() + DOWNLOAD_EVENT_WAIT_MS / 1000
         while time.monotonic() < deadline:
+            if paid_requests:
+                return "paid"
             if downloads:
+                if url_looks_like_paid_asset(downloads[0].url):
+                    return "paid"
                 downloads[0].save_as(out_path)
                 return "downloaded"
-            if is_verification_page(page):
+            active_pages = [page, *popups]
+            if any(is_verification_page(active_page) for active_page in active_pages):
                 return "verification"
-            if page_has_paid_marker(page):
+            if any(page_has_paid_marker(active_page) for active_page in active_pages):
                 return "paid"
             page.wait_for_timeout(500)
 
-        return "no_download"
+        return "opened_page" if popups else "no_download"
     except Exception:
         return "no_download"
     finally:
@@ -292,6 +317,14 @@ def click_download_candidate(page, locator, out_path: Path) -> str:
                 page.remove_listener(event, handler)
             except Exception:
                 pass
+        try:
+            page.context.remove_listener("page", on_popup)
+        except Exception:
+            pass
+        try:
+            page.context.remove_listener("request", on_request)
+        except Exception:
+            pass
         for popup in popups:
             try:
                 popup.remove_listener("download", on_download)
@@ -351,7 +384,7 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
             **debug_info,
         }
 
-    if not page_has_download_candidate(page) and page_has_paid_marker(page):
+    if page_has_paid_marker(page):
         return paid_result(page, debug_dir, paper)
 
     click_result = find_and_click_pdf_download(page, out_path)
