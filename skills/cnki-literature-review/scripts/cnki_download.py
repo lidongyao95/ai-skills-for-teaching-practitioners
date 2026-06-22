@@ -25,7 +25,6 @@ VERIFY_MARKERS = [
     "拖动滑块",
     "滑块验证",
     "请完成验证",
-    "验证通过",
 ]
 PAID_MARKERS = [
     "付费下载",
@@ -157,8 +156,23 @@ def page_has_marker(page, markers: list[str]) -> bool:
     return any(marker in compact for marker in markers)
 
 
+def is_verification_page(page) -> bool:
+    try:
+        url = page.url.lower()
+        title = page.title()
+    except Exception:
+        url = ""
+        title = ""
+
+    if "/verify/" in url or "captcha" in url:
+        return True
+    if "安全验证" in title:
+        return True
+    return page_has_marker(page, VERIFY_MARKERS)
+
+
 def wait_for_verification(page, verify_wait: int) -> bool:
-    if not page_has_marker(page, VERIFY_MARKERS):
+    if not is_verification_page(page):
         return True
 
     if verify_wait <= 0:
@@ -167,10 +181,41 @@ def wait_for_verification(page, verify_wait: int) -> bool:
     print(f"  检测到验证页面，请在浏览器中完成验证（最多 {verify_wait}s）...")
     deadline = time.monotonic() + verify_wait
     while time.monotonic() < deadline:
-        time.sleep(2)
-        if not page_has_marker(page, VERIFY_MARKERS):
-            print("  验证页面已离开，继续下载")
+        page.wait_for_timeout(1000)
+        if not is_verification_page(page):
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1000)
+            if not is_verification_page(page):
+                print("  验证已完成，继续下载")
+                return True
+    return False
+
+
+def click_download_candidate(page, locator, out_path: Path) -> bool:
+    try:
+        with page.expect_download(timeout=DOWNLOAD_TIMEOUT_MS) as dl_info:
+            locator.click(timeout=5000)
+        download = dl_info.value
+        download.save_as(out_path)
+        return True
+    except (PlaywrightTimeout, Exception):
+        return False
+
+
+def find_and_click_pdf_download(page, out_path: Path) -> bool:
+    for label in PDF_BUTTON_TEXTS:
+        btn = page.locator("a, button").filter(has_text=label).first
+        if btn.count() > 0 and click_download_candidate(page, btn, out_path):
             return True
+
+    for sel in ["a#pdfDown", "a[href*='pdf'], a[href*='PDF']", ".btn-dlpdf"]:
+        loc = page.locator(sel).first
+        if loc.count() > 0 and click_download_candidate(page, loc, out_path):
+            return True
+
     return False
 
 
@@ -183,7 +228,7 @@ def paid_result(page, debug_dir: Path, paper: dict) -> dict:
     }
 
 
-def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_wait: int) -> dict:
+def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_wait: int, navigate: bool = True) -> dict:
     pid = paper["id"]
     title = paper.get("title", "untitled")
     out_name = f"{pid}.pdf"
@@ -196,8 +241,9 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
-    time.sleep(2)
+    if navigate:
+        page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
+        time.sleep(2)
 
     if not wait_for_verification(page, verify_wait):
         debug_info = save_debug_snapshot(page, debug_dir, paper)
@@ -210,39 +256,12 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
     if page_has_marker(page, PAID_MARKERS):
         return paid_result(page, debug_dir, paper)
 
-    clicked = False
-    for label in PDF_BUTTON_TEXTS:
-        btn = page.locator("a, button").filter(has_text=label).first
-        if btn.count() > 0:
-            try:
-                with page.expect_download(timeout=DOWNLOAD_TIMEOUT_MS) as dl_info:
-                    btn.click(timeout=5000)
-                download = dl_info.value
-                download.save_as(out_path)
-                clicked = True
-                break
-            except (PlaywrightTimeout, Exception):
-                continue
+    clicked = find_and_click_pdf_download(page, out_path)
 
     if not clicked:
-        for sel in ["a#pdfDown", "a[href*='pdf'], a[href*='PDF']", ".btn-dlpdf"]:
-            loc = page.locator(sel).first
-            if loc.count() == 0:
-                continue
-            try:
-                with page.expect_download(timeout=DOWNLOAD_TIMEOUT_MS) as dl_info:
-                    loc.click(timeout=5000)
-                download = dl_info.value
-                download.save_as(out_path)
-                clicked = True
-                break
-            except Exception:
-                continue
-
-    if not clicked:
-        if page_has_marker(page, VERIFY_MARKERS):
+        if is_verification_page(page):
             if wait_for_verification(page, verify_wait):
-                return try_download_pdf(page, pdf_dir, debug_dir, paper, 0)
+                return try_download_pdf(page, pdf_dir, debug_dir, paper, 0, navigate=False)
             debug_info = save_debug_snapshot(page, debug_dir, paper)
             return {
                 "status": "verification",
