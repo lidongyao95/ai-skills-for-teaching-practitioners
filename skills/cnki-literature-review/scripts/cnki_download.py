@@ -45,6 +45,13 @@ PAID_PAGE_MARKER_GROUPS = [
 ]
 RETRY_STATUSES = {"failed", "verification"}
 REPLACE_STATUSES = {"paid"}
+BROWSER_CLOSED_MARKERS = [
+    "Target page, context or browser has been closed",
+    "Target closed",
+    "Browser has been closed",
+    "browser has been closed",
+]
+MAX_BROWSER_RECOVERY_ATTEMPTS = 1
 
 
 def safe_filename(title: str, max_len: int = 80) -> str:
@@ -359,6 +366,48 @@ def paid_result(page, debug_dir: Path, paper: dict) -> dict:
     }
 
 
+def is_browser_closed_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in BROWSER_CLOSED_MARKERS)
+
+
+def open_download_session(playwright, args, initial: bool):
+    browser = playwright.chromium.launch(headless=args.headless)
+    context = browser.new_context(accept_downloads=True)
+    page = context.new_page()
+
+    if initial:
+        if args.headless and args.manual_wait > 0:
+            print(f"打开知网首页，headless 模式等待 {args.manual_wait}s（无法人工处理验证码/登录）...")
+        elif args.manual_wait > 0:
+            print(f"打开知网首页，等待机构认证或验证码处理（最多 {args.manual_wait}s）...")
+        else:
+            print("打开知网首页，跳过机构认证等待（--manual-wait 0）...")
+        page.goto(CNKI_HOME, wait_until="domcontentloaded", timeout=60000)
+        if args.manual_wait > 0:
+            time.sleep(args.manual_wait)
+    else:
+        print("  检测到浏览器页面已关闭，正在重新打开浏览器会话...")
+        try:
+            page.goto(CNKI_HOME, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1000)
+        except Exception as exc:
+            print(f"  警告: 重新打开知网首页失败，将直接重试当前文献: {exc}")
+
+    return browser, context, page
+
+
+def close_download_session(browser, context) -> None:
+    try:
+        context.close()
+    except Exception:
+        pass
+    try:
+        browser.close()
+    except Exception:
+        pass
+
+
 def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_wait: int, navigate: bool = True) -> dict:
     pid = paper["id"]
     title = paper.get("title", "untitled")
@@ -512,19 +561,21 @@ def main() -> int:
                 print("  无可用替补文献")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=args.headless)
-        context = browser.new_context(accept_downloads=True)
-        page = context.new_page()
+        browser, context, page = open_download_session(p, args, initial=True)
 
-        if args.headless and args.manual_wait > 0:
-            print(f"打开知网首页，headless 模式等待 {args.manual_wait}s（无法人工处理验证码/登录）...")
-        elif args.manual_wait > 0:
-            print(f"打开知网首页，等待机构认证或验证码处理（最多 {args.manual_wait}s）...")
-        else:
-            print("打开知网首页，跳过机构认证等待（--manual-wait 0）...")
-        page.goto(CNKI_HOME, wait_until="domcontentloaded", timeout=60000)
-        if args.manual_wait > 0:
-            time.sleep(args.manual_wait)
+        def run_download_with_recovery(paper: dict) -> dict:
+            nonlocal browser, context, page
+            attempts = 0
+            while True:
+                try:
+                    return try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
+                except Exception as exc:
+                    if is_browser_closed_error(exc) and attempts < MAX_BROWSER_RECOVERY_ATTEMPTS:
+                        attempts += 1
+                        close_download_session(browser, context)
+                        browser, context, page = open_download_session(p, args, initial=False)
+                        continue
+                    return {"status": "failed", "reason": str(exc)}
 
         i = 0
         while i < len(papers):
@@ -533,11 +584,7 @@ def main() -> int:
             title = paper.get("title", "")[:40]
             print(f"[{i+1}/{len(papers)}] {pid} {title}...")
 
-            try:
-                result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
-            except Exception as exc:
-                result = {"status": "failed", "reason": str(exc)}
-
+            result = run_download_with_recovery(paper)
             handle_result(paper, result)
 
             i += 1
@@ -554,10 +601,7 @@ def main() -> int:
                 pid = paper["id"]
                 title = paper.get("title", "")[:40]
                 print(f"[retry {ri+1}/{len(current_retry)}] {pid} {title}...")
-                try:
-                    result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
-                except Exception as exc:
-                    result = {"status": "failed", "reason": str(exc)}
+                result = run_download_with_recovery(paper)
                 handle_result(paper, result, allow_replace=True)
                 if ri < len(current_retry) - 1:
                     time.sleep(args.delay)
@@ -568,18 +612,14 @@ def main() -> int:
                 title = paper.get("title", "")[:40]
                 print(f"[{i+1}/{len(papers)}] {pid} {title}...")
 
-                try:
-                    result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
-                except Exception as exc:
-                    result = {"status": "failed", "reason": str(exc)}
-
+                result = run_download_with_recovery(paper)
                 handle_result(paper, result)
 
                 i += 1
                 if i < len(papers):
                     time.sleep(args.delay)
 
-        browser.close()
+        close_download_session(browser, context)
 
     print(f"\n完成: 成功 {ok}, 失败 {fail}, 目标 {target_count}")
     return 0 if ok > 0 else 2
