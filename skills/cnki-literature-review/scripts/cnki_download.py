@@ -500,14 +500,14 @@ def main() -> int:
         print(f"  FAIL: {result.get('reason', 'unknown')}")
         fail += 1
 
-        if result.get("status") in RETRY_STATUSES:
+        if result.get("status") in RETRY_STATUSES and result.get("status") not in REPLACE_STATUSES:
             retry_queue.append(paper)
 
         if allow_replace and not args.no_replace_paid and result.get("status") in REPLACE_STATUSES:
             replacement, replacement_no = pop_replacement(replacements, used_titles, replacement_no)
             if replacement:
                 papers.append(replacement)
-                print(f"  替补加入: {replacement['id']} {replacement.get('title', '')[:40]}...")
+                print(f"  付费终态，跳过重试；从候选池补位: {replacement['id']} {replacement.get('title', '')[:40]}...")
             else:
                 print("  无可用替补文献")
 
@@ -558,8 +558,25 @@ def main() -> int:
                     result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
                 except Exception as exc:
                     result = {"status": "failed", "reason": str(exc)}
-                handle_result(paper, result, allow_replace=False)
+                handle_result(paper, result, allow_replace=True)
                 if ri < len(current_retry) - 1:
+                    time.sleep(args.delay)
+
+            while i < len(papers):
+                paper = papers[i]
+                pid = paper["id"]
+                title = paper.get("title", "")[:40]
+                print(f"[{i+1}/{len(papers)}] {pid} {title}...")
+
+                try:
+                    result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
+                except Exception as exc:
+                    result = {"status": "failed", "reason": str(exc)}
+
+                handle_result(paper, result)
+
+                i += 1
+                if i < len(papers):
                     time.sleep(args.delay)
 
         browser.close()
