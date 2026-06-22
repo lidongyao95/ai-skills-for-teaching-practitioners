@@ -40,6 +40,12 @@ PAID_MARKERS = [
     "订购本文",
     "收费下载",
 ]
+PAID_PAGE_MARKER_GROUPS = [
+    ["选择下载方式", "单篇下载"],
+    ["选择下载方式", "仅下载本文"],
+    ["选择下载方式", "开通会员"],
+    ["单篇下载", "仅下载本文"],
+]
 RETRY_STATUSES = {"failed", "verification"}
 REPLACE_STATUSES = {"paid"}
 
@@ -158,7 +164,11 @@ def page_has_marker(page, markers: list[str]) -> bool:
 
 def text_has_paid_marker(text: str) -> bool:
     compact = re.sub(r"\s+", "", text)
-    return any(marker in compact for marker in PAID_MARKERS)
+    if any(marker in compact for marker in PAID_MARKERS):
+        return True
+    if any(all(marker in compact for marker in group) for group in PAID_PAGE_MARKER_GROUPS):
+        return True
+    return "选择下载方式" in compact and re.search(r"[￥¥]\d+(?:\.\d+)?", compact) is not None
 
 
 def url_looks_like_paid(url: str) -> bool:
