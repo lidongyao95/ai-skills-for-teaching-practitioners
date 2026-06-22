@@ -212,7 +212,7 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
 
     clicked = False
     for label in PDF_BUTTON_TEXTS:
-        btn = page.get_by_text(label, exact=False).first
+        btn = page.locator("a, button").filter(has_text=label).first
         if btn.count() > 0:
             try:
                 with page.expect_download(timeout=DOWNLOAD_TIMEOUT_MS) as dl_info:
