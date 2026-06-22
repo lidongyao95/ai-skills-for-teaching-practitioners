@@ -10,7 +10,7 @@ from pathlib import Path
 try:
     import fitz
 except ImportError:
-    raise SystemExit("pip install pymupdf")
+    raise SystemExit("python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple pymupdf")
 
 MIN_CHARS_FOR_TEXT = 200
 

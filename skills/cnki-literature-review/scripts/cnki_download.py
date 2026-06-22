@@ -284,12 +284,9 @@ def main() -> int:
                         help="批量结束后重试普通失败文献的轮数")
     parser.add_argument("--no-replace-paid", action="store_true",
                         help="遇到付费下载页面时不从候选列表补充替换文献")
-    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--headless", action="store_true", help="无头模式；CNKI 可能返回空白页，建议默认有界面运行")
     parser.add_argument("--clean", action="store_true", help="下载前清理旧的 PDF、meta 和 text 文件")
     args = parser.parse_args()
-
-    if sync_playwright is None:
-        raise SystemExit("pip install playwright && playwright install chromium")
 
     if args.manual_wait < 0:
         print("错误: --manual-wait 不能小于 0", file=sys.stderr)
@@ -320,6 +317,13 @@ def main() -> int:
     if not papers:
         print("无 selected=true 的文献", file=sys.stderr)
         return 1
+
+    if sync_playwright is None:
+        raise SystemExit(
+            "python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple playwright && "
+            "PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright "
+            "python3 -m playwright install chromium"
+        )
 
     print(f"待下载 {len(papers)} 篇（需机构 IP 认证）")
     if replacements:

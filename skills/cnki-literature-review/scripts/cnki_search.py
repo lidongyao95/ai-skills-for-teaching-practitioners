@@ -95,6 +95,13 @@ def page_has_no_results(page) -> bool:
     return any(marker in compact for marker in NO_RESULT_MARKERS)
 
 
+def page_is_blank(page) -> bool:
+    html_len, text_len = page.evaluate(
+        "() => [document.documentElement.outerHTML.length, document.body ? document.body.innerText.trim().length : 0]"
+    )
+    return html_len < 100 and text_len == 0
+
+
 def wait_for_search_results(page, timeout_ms: int) -> tuple[list[dict], str]:
     deadline = time.monotonic() + timeout_ms / 1000
     last_raw: list[dict] = []
@@ -111,6 +118,11 @@ def wait_for_search_results(page, timeout_ms: int) -> tuple[list[dict], str]:
             pass
 
         if time.monotonic() >= deadline:
+            try:
+                if page_is_blank(page):
+                    return [], "blank"
+            except Exception:
+                pass
             return last_raw, "timeout"
 
         page.wait_for_timeout(500)
@@ -130,6 +142,8 @@ def search_one(page, query: str, max_results: int, result_timeout_ms: int) -> li
     raw, status = wait_for_search_results(page, result_timeout_ms)
     if status == "empty":
         print("  -> 页面提示无结果")
+    elif status == "blank":
+        print("  -> 页面为空白，CNKI 可能拦截 headless 访问；请去掉 --headless 后重试")
     elif status == "timeout":
         seconds = result_timeout_ms / 1000
         print(f"  -> {seconds:g}s 内未检测到结果表，按当前解析结果继续")
@@ -147,11 +161,15 @@ def main() -> int:
     parser.add_argument("--result-timeout", type=float, default=20,
                         help="等待结果表或无结果提示的最长秒数")
     parser.add_argument("--output", required=True, help="输出 JSON 路径")
-    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--headless", action="store_true", help="无头模式；CNKI 可能返回空白页，建议默认有界面运行")
     args = parser.parse_args()
 
     if sync_playwright is None:
-        raise SystemExit("pip install playwright && playwright install chromium")
+        raise SystemExit(
+            "python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple playwright && "
+            "PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright "
+            "python3 -m playwright install chromium"
+        )
 
     if args.result_timeout <= 0:
         print("错误: --result-timeout 必须大于 0", file=sys.stderr)

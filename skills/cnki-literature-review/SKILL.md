@@ -50,7 +50,7 @@ python3 scripts/init_workspace.py --topic "研究主题" --dir ./literature-revi
 产出目录：
 ```
 literature-review/
-├── papers/pdf/       # 下载的 PDF（统一命名为 snki-xxx.pdf）
+├── papers/pdf/       # 下载的 PDF（统一命名为 cnki-xxx.pdf）
 ├── papers/text/      # 提取的全文 txt
 ├── papers/meta/      # 元数据 JSON + mapping.json
 ├── summaries/        # 单篇摘要 markdown
@@ -106,7 +106,7 @@ python3 scripts/cnki_search.py \
 | `--year-to` | 当前年份 | 结束年份 |
 | `--max-results` | 40 | 每组关键词最多获取篇数 |
 | `--result-timeout` | 20 | 等待结果表或无结果提示的最长秒数，避免少结果/无结果时卡在页面后台请求 |
-| `--headless` | false | 是否无头模式 |
+| `--headless` | false | 是否无头模式；CNKI 可能返回空白页，优先使用默认有界面模式 |
 
 ### JS 提取原理
 
@@ -212,7 +212,7 @@ python3 scripts/cnki_download.py \
 | `--verify-wait` | 120 | 详情页出现验证码/安全验证时的等待秒数；已确认不会触发可设 0 |
 | `--retry-failed` | 1 | 批量结束后重试普通失败文献的轮数 |
 | `--no-replace-paid` | false | 遇到付费下载页时不追加替补文献 |
-| `--headless` | false | 无界面运行；只适合无需人工处理登录、验证码或机构认证的环境 |
+| `--headless` | false | 无界面运行；CNKI 可能返回空白页，只适合已确认可用且无需人工处理登录、验证码或机构认证的环境 |
 | `--delay` | 5 | 篇间等待秒数，避免触发风控 |
 
 **下载前务必确认：** 访问 https://www.cnki.net 显示机构名称（如「XX大学图书馆」）。
@@ -326,11 +326,13 @@ python3 scripts/extract_pdf_text.py --workspace ./literature-review
 ## 依赖安装
 
 ```bash
-pip install playwright pymupdf
-playwright install chromium
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple playwright pymupdf
+PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright python3 -m playwright install chromium
 
 # 可选：交互式浏览器
-npm i -g agent-browser
+npm --registry=https://registry.npmmirror.com i -g agent-browser
 # 或: brew install agent-browser
 ```
 
