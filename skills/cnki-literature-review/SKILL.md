@@ -93,6 +93,7 @@ python3 scripts/cnki_search.py \
   --year-from 2025 \
   --year-to 2026 \
   --max-results 40 \
+  --max-pages 10 \
   --result-timeout 20 \
   --output ./literature-review/search/candidates.json
 ```
@@ -105,6 +106,7 @@ python3 scripts/cnki_search.py \
 | `--year-from` | 当前年份-1 | 起始年份 |
 | `--year-to` | 当前年份 | 结束年份 |
 | `--max-results` | 40 | 每组关键词最多获取篇数 |
+| `--max-pages` | 10 | 每组关键词最多翻页数；年份过滤后结果不足时可调大 |
 | `--result-timeout` | 20 | 等待结果表或无结果提示的最长秒数，避免少结果/无结果时卡在页面后台请求 |
 | `--headless` | false | 是否无头模式；CNKI 可能返回空白页，优先使用默认有界面模式 |
 
@@ -125,7 +127,7 @@ rows.forEach(row => {
 
 ### 容错机制
 
-脚本使用 `domcontentloaded` 后自行轮询结果表，不再依赖 `networkidle`。如果搜索结果很少、页面提示无结果，或 CNKI 后台请求持续不断，脚本会在 `--result-timeout` 到达后按当前解析结果继续，避免单组关键词长时间卡住。
+脚本使用 `domcontentloaded` 后自行轮询结果表，不再依赖 `networkidle`。如果搜索结果很少、页面提示无结果，或 CNKI 后台请求持续不断，脚本会在 `--result-timeout` 到达后按当前解析结果继续，避免单组关键词长时间卡住。脚本会优先使用 CNKI 左侧「年度」分组应用 `--year-from/--year-to`，再按 `--max-pages` 翻页收集候选；若年度分组无法自动生效，才用结果表日期做兜底过滤。注意：CNKI「年度」和结果表「发表时间」/上架日期可能不是同一口径，候选 JSON 中的 `year` 表示结果表日期解析出的年份。
 
 如果 JS 提取也失败，使用 agent-browser 交互模式兜底：
 
