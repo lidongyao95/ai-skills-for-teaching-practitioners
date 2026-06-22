@@ -35,7 +35,6 @@ PAID_MARKERS = [
     "购买单篇",
     "余额不足",
     "账户余额不足",
-    "充值中心",
     "支付订单",
     "订购本文",
     "收费下载",
@@ -154,6 +153,15 @@ def page_text(page) -> str:
 def page_has_marker(page, markers: list[str]) -> bool:
     compact = re.sub(r"\s+", "", page_text(page))
     return any(marker in compact for marker in markers)
+
+
+def text_has_paid_marker(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    return any(marker in compact for marker in PAID_MARKERS)
+
+
+def page_has_paid_marker(page) -> bool:
+    return text_has_paid_marker(page_text(page))
 
 
 def page_has_download_candidate(page) -> bool:
@@ -284,7 +292,7 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
             **debug_info,
         }
 
-    if page_has_marker(page, PAID_MARKERS):
+    if not page_has_download_candidate(page) and page_has_paid_marker(page):
         return paid_result(page, debug_dir, paper)
 
     clicked = find_and_click_pdf_download(page, out_path)
@@ -300,7 +308,7 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
                 **debug_info,
             }
 
-        if page_has_marker(page, PAID_MARKERS):
+        if page_has_paid_marker(page):
             return paid_result(page, debug_dir, paper)
 
         debug_info = save_debug_snapshot(page, debug_dir, paper)
