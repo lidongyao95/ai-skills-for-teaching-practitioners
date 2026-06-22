@@ -421,8 +421,10 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    started_on_verification = False
     if navigate:
         page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
+        started_on_verification = is_verification_page(page)
         time.sleep(2)
 
     if not wait_for_verification(page, verify_wait):
@@ -432,6 +434,28 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
             "reason": "页面需要验证，等待后仍未通过",
             **debug_info,
         }
+    if started_on_verification:
+        print("  验证通过后重新打开原始文章页面")
+        page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
+        time.sleep(2)
+        if is_verification_page(page):
+            debug_info = save_debug_snapshot(page, debug_dir, paper)
+            return {
+                "status": "verification",
+                "reason": "验证通过后重新打开文章页仍需要验证",
+                **debug_info,
+            }
+    if navigate and not page_looks_like_article(page) and not page_has_paid_marker(page):
+        print("  当前页不是文章详情页，重新打开原始文章页面")
+        page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
+        time.sleep(2)
+        if is_verification_page(page):
+            debug_info = save_debug_snapshot(page, debug_dir, paper)
+            return {
+                "status": "verification",
+                "reason": "重新打开文章页后仍需要验证",
+                **debug_info,
+            }
 
     if page_has_paid_marker(page):
         return paid_result(page, debug_dir, paper)
@@ -441,7 +465,8 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
     if click_result != "downloaded":
         if click_result == "verification" or is_verification_page(page):
             if wait_for_verification(page, verify_wait):
-                return try_download_pdf(page, pdf_dir, debug_dir, paper, 0, navigate=False)
+                print("  点击下载验证通过后重新打开原始文章页面")
+                return try_download_pdf(page, pdf_dir, debug_dir, paper, 0, navigate=True)
             debug_info = save_debug_snapshot(page, debug_dir, paper)
             return {
                 "status": "verification",
