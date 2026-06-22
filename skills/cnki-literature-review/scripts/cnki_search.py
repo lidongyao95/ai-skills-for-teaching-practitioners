@@ -226,11 +226,14 @@ def apply_year_group_filter(page, year_from: int | None, year_to: int | None) ->
         )
         if not applied:
             return False
-        page.wait_for_function(
-            "(previous) => { const first = document.querySelector('table.result-table-list tr td.name a'); return first && first.textContent.trim() !== previous; }",
-            arg=before,
-            timeout=15000,
-        )
+        try:
+            page.wait_for_function(
+                "(previous) => { const first = document.querySelector('table.result-table-list tr td.name a'); return first && first.textContent.trim() !== previous; }",
+                arg=before,
+                timeout=15000,
+            )
+        except Exception:
+            print("  -> 已点击 CNKI 年度分组；结果表刷新/日期口径不稳定，继续按年度分组结果解析")
         page.wait_for_timeout(2000)
         print(f"  -> 已应用 CNKI 年度分组筛选: {start}-{end}（结果表日期可能为发表/上架等不同口径）")
         return True
