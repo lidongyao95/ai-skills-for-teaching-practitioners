@@ -9,16 +9,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
-    from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+    from playwright.sync_api import sync_playwright
 except ImportError:
     sync_playwright = None
 
-    class PlaywrightTimeout(Exception):
-        pass
-
 CNKI_HOME = "https://www.cnki.net"
 PDF_BUTTON_TEXTS = ["PDF下载", "PDF 下载", "下载PDF", "pdf下载", "PDF"]
-DOWNLOAD_TIMEOUT_MS = 120_000
+DOWNLOAD_EVENT_WAIT_MS = 20_000
 VERIFY_MARKERS = [
     "验证码",
     "安全验证",
@@ -259,29 +256,65 @@ def wait_for_verification(page, verify_wait: int) -> bool:
     return False
 
 
-def click_download_candidate(page, locator, out_path: Path) -> bool:
+def click_download_candidate(page, locator, out_path: Path) -> str:
+    downloads = []
+    popups = []
+
+    def on_download(download) -> None:
+        downloads.append(download)
+
+    def on_popup(popup) -> None:
+        popups.append(popup)
+        popup.on("download", on_download)
+
     try:
-        with page.expect_download(timeout=DOWNLOAD_TIMEOUT_MS) as dl_info:
-            locator.click(timeout=5000)
-        download = dl_info.value
-        download.save_as(out_path)
-        return True
-    except (PlaywrightTimeout, Exception):
-        return False
+        page.on("download", on_download)
+        page.on("popup", on_popup)
+        locator.click(timeout=5000)
+
+        deadline = time.monotonic() + DOWNLOAD_EVENT_WAIT_MS / 1000
+        while time.monotonic() < deadline:
+            if downloads:
+                downloads[0].save_as(out_path)
+                return "downloaded"
+            if is_verification_page(page):
+                return "verification"
+            if page_has_paid_marker(page):
+                return "paid"
+            page.wait_for_timeout(500)
+
+        return "no_download"
+    except Exception:
+        return "no_download"
+    finally:
+        for event, handler in [("download", on_download), ("popup", on_popup)]:
+            try:
+                page.remove_listener(event, handler)
+            except Exception:
+                pass
+        for popup in popups:
+            try:
+                popup.remove_listener("download", on_download)
+            except Exception:
+                pass
 
 
-def find_and_click_pdf_download(page, out_path: Path) -> bool:
+def find_and_click_pdf_download(page, out_path: Path) -> str:
     for label in PDF_BUTTON_TEXTS:
         btn = page.locator("a, button").filter(has_text=label).first
-        if btn.count() > 0 and click_download_candidate(page, btn, out_path):
-            return True
+        if btn.count() > 0:
+            result = click_download_candidate(page, btn, out_path)
+            if result != "no_download":
+                return result
 
     for sel in ["a#pdfDown", "a[href*='pdf'], a[href*='PDF']", ".btn-dlpdf"]:
         loc = page.locator(sel).first
-        if loc.count() > 0 and click_download_candidate(page, loc, out_path):
-            return True
+        if loc.count() > 0:
+            result = click_download_candidate(page, loc, out_path)
+            if result != "no_download":
+                return result
 
-    return False
+    return "no_download"
 
 
 def paid_result(page, debug_dir: Path, paper: dict) -> dict:
@@ -321,10 +354,10 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
     if not page_has_download_candidate(page) and page_has_paid_marker(page):
         return paid_result(page, debug_dir, paper)
 
-    clicked = find_and_click_pdf_download(page, out_path)
+    click_result = find_and_click_pdf_download(page, out_path)
 
-    if not clicked:
-        if is_verification_page(page):
+    if click_result != "downloaded":
+        if click_result == "verification" or is_verification_page(page):
             if wait_for_verification(page, verify_wait):
                 return try_download_pdf(page, pdf_dir, debug_dir, paper, 0, navigate=False)
             debug_info = save_debug_snapshot(page, debug_dir, paper)
@@ -334,7 +367,7 @@ def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_w
                 **debug_info,
             }
 
-        if page_has_paid_marker(page):
+        if click_result == "paid" or page_has_paid_marker(page):
             return paid_result(page, debug_dir, paper)
 
         debug_info = save_debug_snapshot(page, debug_dir, paper)
