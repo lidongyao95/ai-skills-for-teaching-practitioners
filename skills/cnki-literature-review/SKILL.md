@@ -165,25 +165,24 @@ python3 scripts/curate.py \
 ## Step 4: 下载 PDF（需机构IP）
 
 ```bash
-# 首次下载（全新任务）
+# 首次下载（全新任务，默认跳过首页等待）
 python3 scripts/cnki_download.py \
   --input ./literature-review/search/candidates.json \
   --workspace ./literature-review \
   --delay 5
 
-# 已确认当前网络无需登录/验证码时，跳过首页等待
+# 若当前网络确实需要在知网首页处理机构认证/弹窗，再显式等待
 python3 scripts/cnki_download.py \
   --input ./literature-review/search/candidates.json \
   --workspace ./literature-review \
   --delay 5 \
-  --manual-wait 0
+  --manual-wait 60
 
-# 详情页可能触发验证码时，跳过首页等待，但允许验证码页人工处理
+# 详情页可能触发验证码时，允许验证码页人工处理
 python3 scripts/cnki_download.py \
   --input ./literature-review/search/candidates.json \
   --workspace ./literature-review \
   --delay 5 \
-  --manual-wait 0 \
   --verify-wait 120
 
 # 如果重新筛选后 ID 变化，建议加 --clean 清理旧文件避免残留
@@ -196,7 +195,7 @@ python3 scripts/cnki_download.py \
 行为：
 1. 读取 `selected: true` 的文献
 2. **ID 重复检查**：若存在重复 ID，直接报错退出，提示重新运行 `curate.py`
-3. 打开知网首页，根据 `--manual-wait` 等待机构认证/验证码；已确认无需认证时设为 `--manual-wait 0`
+3. 打开知网首页做轻量初始化；默认不等待，只有显式传入 `--manual-wait` 时才停留处理首页机构认证/弹窗
 4. 逐篇打开详情页，点击 PDF 下载按钮
 5. 保存至 `papers/pdf/` → 命名 `cnki-XXX.pdf`（curate.py 已确保 ID 唯一）
 6. **缓存复用**：若 PDF 已存在且有效，标记 `cached` 跳过下载（多次运行共用同一 PDF）
@@ -211,7 +210,7 @@ python3 scripts/cnki_download.py \
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `--manual-wait` | 60 | 仅用于打开知网首页后的机构认证等待；确认无需首页认证时设 0 |
+| `--manual-wait` | 0 | 仅用于打开知网首页后的机构认证等待；默认跳过，确需首页认证时手动设置秒数 |
 | `--verify-wait` | 120 | 详情页出现验证码/安全验证时的等待秒数；脚本会用 URL、页面标题和正文综合判断验证是否完成 |
 | `--retry-failed` | 1 | 批量结束后重试普通失败文献的轮数 |
 | `--no-replace-paid` | false | 遇到付费下载页时不追加替补文献 |
@@ -220,7 +219,7 @@ python3 scripts/cnki_download.py \
 
 **下载前务必确认：** 访问 https://www.cnki.net 显示机构名称（如「XX大学图书馆」）。
 
-`--manual-wait` 不负责详情页验证码，它只是在知网首页停留，方便确认机构 IP 或完成首页弹窗。某篇详情页中途弹出验证码时，不要停止脚本；在可见浏览器中完成验证，脚本会在 `--verify-wait` 内优先检测文章内容或 PDF 下载入口是否出现，并结合 URL、标题和正文判断是否仍在验证页，不会因为验证码页文字短暂变化就立刻重进详情页。若点击 PDF 后进入验证码，脚本会先退出下载事件等待，验证通过后再重新点击 PDF，避免验证完成后仍等待下载事件超时。若验证处理较晚，脚本还会在批量结束后按 `--retry-failed` 重试普通失败项。
+`--manual-wait` 不负责详情页验证码，它只是在知网首页停留，方便少数环境确认机构 IP 或完成首页弹窗；默认值为 0，不做首页人工等待。某篇详情页中途弹出验证码时，不要停止脚本；在可见浏览器中完成验证，脚本会在 `--verify-wait` 内优先检测文章内容或 PDF 下载入口是否出现，并结合 URL、标题和正文判断是否仍在验证页，不会因为验证码页文字短暂变化就立刻重进详情页。若点击 PDF 后进入验证码，脚本会先退出下载事件等待，验证通过后再重新点击 PDF，避免验证完成后仍等待下载事件超时。若验证处理较晚，脚本还会在批量结束后按 `--retry-failed` 重试普通失败项。
 
 如果某篇页面明确提示「付费下载」「购买」「余额不足」等，脚本会将该篇作为终态跳过，不放入重试队列，并从 `candidates.json` 中的未选文献追加替补；补位文献会分配新的 `cnki-XXX` ID，并保留 `original_id`。若某篇在普通失败重试阶段才被识别为付费，仍会触发候选池补位，并继续处理新补入文献。
 

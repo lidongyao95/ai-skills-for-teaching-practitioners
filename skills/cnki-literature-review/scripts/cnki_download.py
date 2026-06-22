@@ -514,8 +514,8 @@ def main() -> int:
     parser.add_argument("--input", required=True)
     parser.add_argument("--workspace", default="./literature-review")
     parser.add_argument("--delay", type=float, default=5.0)
-    parser.add_argument("--manual-wait", type=int, default=60,
-                        help="打开知网首页后的等待秒数；已确认无需认证时设为 0")
+    parser.add_argument("--manual-wait", type=int, default=0,
+                        help="打开知网首页后的等待秒数；默认 0 跳过首页等待，确需首页认证时手动设置")
     parser.add_argument("--verify-wait", type=int, default=120,
                         help="详情页触发验证码/安全验证时的等待秒数")
     parser.add_argument("--retry-failed", type=int, default=1,
