@@ -156,6 +156,28 @@ def page_has_marker(page, markers: list[str]) -> bool:
     return any(marker in compact for marker in markers)
 
 
+def page_has_download_candidate(page) -> bool:
+    try:
+        for label in PDF_BUTTON_TEXTS:
+            if page.locator("a, button").filter(has_text=label).count() > 0:
+                return True
+        for sel in ["a#pdfDown", "a[href*='pdf'], a[href*='PDF']", ".btn-dlpdf"]:
+            if page.locator(sel).count() > 0:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def page_looks_like_article(page) -> bool:
+    if page_has_download_candidate(page):
+        return True
+
+    compact = re.sub(r"\s+", "", page_text(page))
+    article_markers = ["HTML阅读", "CNKIAI阅读", "摘要", "关键词", "作者", "来源", "发表时间"]
+    return sum(1 for marker in article_markers if marker in compact) >= 2
+
+
 def is_verification_page(page) -> bool:
     try:
         url = page.url.lower()
@@ -164,6 +186,8 @@ def is_verification_page(page) -> bool:
         url = ""
         title = ""
 
+    if page_looks_like_article(page):
+        return False
     if "/verify/" in url or "captcha" in url:
         return True
     if "安全验证" in title:
@@ -180,8 +204,15 @@ def wait_for_verification(page, verify_wait: int) -> bool:
 
     print(f"  检测到验证页面，请在浏览器中完成验证（最多 {verify_wait}s）...")
     deadline = time.monotonic() + verify_wait
+    next_status_at = time.monotonic() + 10
     while time.monotonic() < deadline:
         page.wait_for_timeout(1000)
+        if time.monotonic() >= next_status_at:
+            try:
+                print(f"  仍在等待验证完成: {page.title()} {page.url}")
+            except Exception:
+                print("  仍在等待验证完成")
+            next_status_at = time.monotonic() + 10
         if not is_verification_page(page):
             try:
                 page.wait_for_load_state("domcontentloaded", timeout=5000)
