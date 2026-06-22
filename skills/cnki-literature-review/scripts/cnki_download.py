@@ -273,6 +273,17 @@ def wait_for_verification(page, verify_wait: int) -> bool:
     return False
 
 
+def close_paid_popups(main_page, popups: list) -> None:
+    for popup in list(popups):
+        if popup == main_page:
+            continue
+        try:
+            if not popup.is_closed() and page_has_paid_marker(popup):
+                popup.close()
+        except Exception:
+            pass
+
+
 def click_download_candidate(page, locator, out_path: Path) -> str:
     downloads = []
     popups = []
@@ -302,9 +313,11 @@ def click_download_candidate(page, locator, out_path: Path) -> str:
         deadline = time.monotonic() + DOWNLOAD_EVENT_WAIT_MS / 1000
         while time.monotonic() < deadline:
             if paid_requests:
+                close_paid_popups(page, popups)
                 return "paid"
             if downloads:
                 if url_looks_like_paid_asset(downloads[0].url):
+                    close_paid_popups(page, popups)
                     return "paid"
                 downloads[0].save_as(out_path)
                 return "downloaded"
@@ -312,6 +325,7 @@ def click_download_candidate(page, locator, out_path: Path) -> str:
             if any(is_verification_page(active_page) for active_page in active_pages):
                 return "verification"
             if any(page_has_paid_marker(active_page) for active_page in active_pages):
+                close_paid_popups(page, popups)
                 return "paid"
             page.wait_for_timeout(500)
 
