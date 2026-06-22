@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse, json, re, sys, time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -160,7 +161,22 @@ def text_has_paid_marker(text: str) -> bool:
     return any(marker in compact for marker in PAID_MARKERS)
 
 
+def url_looks_like_paid(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    return host.endswith("cnki.net") and path.startswith("/bar/fee_")
+
+
 def page_has_paid_marker(page) -> bool:
+    try:
+        if url_looks_like_paid(page.url):
+            return True
+    except Exception:
+        pass
     return text_has_paid_marker(page_text(page))
 
 
