@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""知网检索 v2：多关键词并行检索，JS evaluate 提取结构化数据。
-ACTUAL BATTLE VERIFIED: 2026-06-08 on CNKI kns8s page structure.
-"""
+"""知网检索：多关键词并行检索，JS evaluate 提取结构化数据。"""
 
 from __future__ import annotations
 
@@ -13,10 +11,22 @@ from urllib.parse import quote
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 except ImportError:
-    raise SystemExit("pip install playwright && playwright install chromium")
+    sync_playwright = None
+
+    class PlaywrightTimeout(Exception):
+        pass
 
 CNKI_SEARCH = "https://kns.cnki.net/kns8s/defaultresult/index"
 CNKI_HOME = "https://www.cnki.net"
+NO_RESULT_MARKERS = [
+    "未找到",
+    "没有找到",
+    "暂无数据",
+    "暂无相关",
+    "无检索结果",
+    "未检索到",
+    "没有检索到",
+]
 
 JS_EXTRACT = """
 () => {
@@ -79,20 +89,51 @@ def parse_from_js(raw_data: list[dict], max_results: int) -> list[dict]:
     return papers
 
 
-def search_one(page, query: str, max_results: int) -> list[dict]:
+def page_has_no_results(page) -> bool:
+    text = page.evaluate("() => document.body ? document.body.innerText : ''")
+    compact = re.sub(r"\s+", "", text)
+    return any(marker in compact for marker in NO_RESULT_MARKERS)
+
+
+def wait_for_search_results(page, timeout_ms: int) -> tuple[list[dict], str]:
+    deadline = time.monotonic() + timeout_ms / 1000
+    last_raw: list[dict] = []
+
+    while True:
+        try:
+            last_raw = page.evaluate(JS_EXTRACT)
+            if last_raw:
+                return last_raw, "results"
+
+            if page_has_no_results(page):
+                return [], "empty"
+        except Exception:
+            pass
+
+        if time.monotonic() >= deadline:
+            return last_raw, "timeout"
+
+        page.wait_for_timeout(500)
+
+
+def search_one(page, query: str, max_results: int, result_timeout_ms: int) -> list[dict]:
     url = f"{CNKI_SEARCH}?kw={quote(query)}"
-    page.goto(url, wait_until="networkidle", timeout=90000)
-    page.wait_for_timeout(5000)
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
     try:
         popup_close = page.locator(".close, .layui-layer-close").first
         if popup_close.count() > 0:
             popup_close.click(timeout=2000)
-            page.wait_for_timeout(1000)
     except Exception:
         pass
 
-    raw = page.evaluate(JS_EXTRACT)
+    raw, status = wait_for_search_results(page, result_timeout_ms)
+    if status == "empty":
+        print("  -> 页面提示无结果")
+    elif status == "timeout":
+        seconds = result_timeout_ms / 1000
+        print(f"  -> {seconds:g}s 内未检测到结果表，按当前解析结果继续")
+
     papers = parse_from_js(raw, max_results)
     return papers
 
@@ -103,9 +144,18 @@ def main() -> int:
     parser.add_argument("--year-from", type=int, default=None)
     parser.add_argument("--year-to", type=int, default=None)
     parser.add_argument("--max-results", type=int, default=40)
+    parser.add_argument("--result-timeout", type=float, default=20,
+                        help="等待结果表或无结果提示的最长秒数")
     parser.add_argument("--output", required=True, help="输出 JSON 路径")
     parser.add_argument("--headless", action="store_true")
     args = parser.parse_args()
+
+    if sync_playwright is None:
+        raise SystemExit("pip install playwright && playwright install chromium")
+
+    if args.result_timeout <= 0:
+        print("错误: --result-timeout 必须大于 0", file=sys.stderr)
+        return 1
 
     queries = [q.strip() for q in args.keywords.split(",") if q.strip()]
     if not queries:
@@ -131,7 +181,7 @@ def main() -> int:
         for qi, query in enumerate(queries):
             try:
                 print(f"\n[{qi+1}/{len(queries)}] {query}")
-                papers = search_one(page, query, args.max_results)
+                papers = search_one(page, query, args.max_results, int(args.result_timeout * 1000))
                 print(f"  -> {len(papers)} 条")
                 for p in papers:
                     if p["title"] not in seen:

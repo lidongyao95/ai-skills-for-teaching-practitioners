@@ -7,6 +7,7 @@ import argparse, json, re
 from pathlib import Path
 
 EXCLUDE_K12 = ["小学", "初中", "高中", "中学", "校本", "幼儿园", "学前"]
+TOPIC_SPLIT_RE = re.compile(r"(?<![A-Za-z])(?:AND|OR|NOT)(?![A-Za-z])|[，,；;、\s]+", re.IGNORECASE)
 
 
 def tokenize(text: str) -> list[str]:
@@ -16,6 +17,20 @@ def tokenize(text: str) -> list[str]:
             if j <= len(text):
                 result.append(text[i:j])
     return result
+
+
+def parse_topic_keywords(topic: str) -> list[str]:
+    keywords = []
+    seen = set()
+
+    for item in TOPIC_SPLIT_RE.split(topic):
+        keyword = item.strip(" \t\r\n\"'“”‘’()（）[]【】")
+        if len(keyword) < 2 or keyword in seen:
+            continue
+        seen.add(keyword)
+        keywords.append(keyword)
+
+    return keywords
 
 
 def main() -> int:
@@ -36,7 +51,11 @@ def main() -> int:
 
     theme_kw = []
     if args.topic:
-        theme_kw = [t for t in re.split(r"[，,；;、]", args.topic) if len(t) >= 2]
+        theme_kw = parse_topic_keywords(args.topic)
+        if not theme_kw:
+            print("警告: --topic 未解析出有效关键词，将无法按主题相关性筛选")
+        else:
+            print(f"主题关键词: {', '.join(theme_kw)}")
 
     selected = []
     for p in papers:

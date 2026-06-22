@@ -10,19 +10,54 @@ from pathlib import Path
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 except ImportError:
-    raise SystemExit("pip install playwright && playwright install chromium")
+    sync_playwright = None
+
+    class PlaywrightTimeout(Exception):
+        pass
 
 CNKI_HOME = "https://www.cnki.net"
 PDF_BUTTON_TEXTS = ["PDF下载", "PDF 下载", "下载PDF", "pdf下载", "PDF"]
 DOWNLOAD_TIMEOUT_MS = 120_000
+VERIFY_MARKERS = [
+    "验证码",
+    "安全验证",
+    "人机验证",
+    "拖动滑块",
+    "滑块验证",
+    "请完成验证",
+    "验证通过",
+]
+PAID_MARKERS = [
+    "付费下载",
+    "需要付费",
+    "需付费",
+    "请先购买",
+    "立即购买",
+    "购买单篇",
+    "余额不足",
+    "账户余额不足",
+    "充值中心",
+    "支付订单",
+    "订购本文",
+    "收费下载",
+]
+RETRY_STATUSES = {"failed", "verification"}
+REPLACE_STATUSES = {"paid"}
 
 
-def safe_filename(title: str, max_len: int = 40) -> str:
+def safe_filename(title: str, max_len: int = 80) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|]', "_", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if len(cleaned) > max_len:
         cleaned = cleaned[:max_len].rstrip()
     return cleaned
+
+
+def relative_to_workspace(path: Path, workspace: Path) -> str:
+    try:
+        return str(path.relative_to(workspace))
+    except ValueError:
+        return str(path)
 
 
 def is_pdf(path: Path) -> bool:
@@ -32,10 +67,11 @@ def is_pdf(path: Path) -> bool:
         return f.read(4) == b"%PDF"
 
 
-def load_selected(path: Path) -> list[dict]:
+def load_candidates(path: Path) -> tuple[list[dict], list[dict]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     papers = data.get("papers", data if isinstance(data, list) else [])
     selected = [p for p in papers if p.get("selected") and p.get("url")]
+    replacements = [p for p in papers if not p.get("selected") and p.get("url")]
 
     ids = [p["id"] for p in selected]
     dupes = [i for i in ids if ids.count(i) > 1]
@@ -43,7 +79,32 @@ def load_selected(path: Path) -> list[dict]:
         print(f"警告: 检测到重复 ID {list(set(dupes))}，请重新运行 curate.py 以分配唯一 ID", file=sys.stderr)
         raise SystemExit(1)
 
-    return selected
+    return selected, replacements
+
+
+def next_id_number(papers: list[dict]) -> int:
+    max_id = 0
+    for paper in papers:
+        match = re.fullmatch(r"cnki-(\d+)", str(paper.get("id", "")))
+        if match:
+            max_id = max(max_id, int(match.group(1)))
+    return max_id + 1
+
+
+def pop_replacement(replacements: list[dict], used_titles: set[str], replacement_no: int) -> tuple[dict | None, int]:
+    while replacements:
+        paper = replacements.pop(0)
+        title = paper.get("title", "")
+        if title in used_titles:
+            continue
+        replacement = dict(paper)
+        replacement["original_id"] = replacement.get("id")
+        replacement["id"] = f"cnki-{replacement_no:03d}"
+        replacement["selected"] = True
+        replacement["replacement"] = True
+        used_titles.add(title)
+        return replacement, replacement_no + 1
+    return None, replacement_no
 
 
 def save_meta(meta_dir: Path, paper: dict, download_info: dict) -> None:
@@ -55,7 +116,74 @@ def save_meta(meta_dir: Path, paper: dict, download_info: dict) -> None:
     )
 
 
-def try_download_pdf(page, pdf_dir: Path, paper: dict) -> dict:
+def save_debug_snapshot(page, debug_dir: Path, paper: dict) -> dict:
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    workspace = debug_dir.parent.parent
+    pid = paper["id"]
+    title = safe_filename(paper.get("title", "untitled"), max_len=30)
+    base = f"{pid}_{title}"
+    html_path = debug_dir / f"{base}.html"
+    png_path = debug_dir / f"{base}.png"
+
+    info = {
+        "page_url": page.url,
+        "page_title": page.title(),
+    }
+
+    try:
+        html_path.write_text(page.content(), encoding="utf-8")
+        info["debug_html"] = relative_to_workspace(html_path, workspace)
+    except Exception as exc:
+        info["debug_html_error"] = str(exc)
+
+    try:
+        page.screenshot(path=png_path, full_page=True)
+        info["debug_screenshot"] = relative_to_workspace(png_path, workspace)
+    except Exception as exc:
+        info["debug_screenshot_error"] = str(exc)
+
+    return info
+
+
+def page_text(page) -> str:
+    try:
+        return page.evaluate("() => document.body ? document.body.innerText : ''")
+    except Exception:
+        return ""
+
+
+def page_has_marker(page, markers: list[str]) -> bool:
+    compact = re.sub(r"\s+", "", page_text(page))
+    return any(marker in compact for marker in markers)
+
+
+def wait_for_verification(page, verify_wait: int) -> bool:
+    if not page_has_marker(page, VERIFY_MARKERS):
+        return True
+
+    if verify_wait <= 0:
+        return False
+
+    print(f"  检测到验证页面，请在浏览器中完成验证（最多 {verify_wait}s）...")
+    deadline = time.monotonic() + verify_wait
+    while time.monotonic() < deadline:
+        time.sleep(2)
+        if not page_has_marker(page, VERIFY_MARKERS):
+            print("  验证页面已离开，继续下载")
+            return True
+    return False
+
+
+def paid_result(page, debug_dir: Path, paper: dict) -> dict:
+    debug_info = save_debug_snapshot(page, debug_dir, paper)
+    return {
+        "status": "paid",
+        "reason": "页面提示需要付费下载",
+        **debug_info,
+    }
+
+
+def try_download_pdf(page, pdf_dir: Path, debug_dir: Path, paper: dict, verify_wait: int) -> dict:
     pid = paper["id"]
     title = paper.get("title", "untitled")
     out_name = f"{pid}.pdf"
@@ -70,6 +198,17 @@ def try_download_pdf(page, pdf_dir: Path, paper: dict) -> dict:
 
     page.goto(paper["url"], wait_until="domcontentloaded", timeout=90000)
     time.sleep(2)
+
+    if not wait_for_verification(page, verify_wait):
+        debug_info = save_debug_snapshot(page, debug_dir, paper)
+        return {
+            "status": "verification",
+            "reason": "页面需要验证，等待后仍未通过",
+            **debug_info,
+        }
+
+    if page_has_marker(page, PAID_MARKERS):
+        return paid_result(page, debug_dir, paper)
 
     clicked = False
     for label in PDF_BUTTON_TEXTS:
@@ -101,7 +240,25 @@ def try_download_pdf(page, pdf_dir: Path, paper: dict) -> dict:
                 continue
 
     if not clicked:
-        return {"status": "failed", "reason": "未找到 PDF 下载按钮"}
+        if page_has_marker(page, VERIFY_MARKERS):
+            if wait_for_verification(page, verify_wait):
+                return try_download_pdf(page, pdf_dir, debug_dir, paper, 0)
+            debug_info = save_debug_snapshot(page, debug_dir, paper)
+            return {
+                "status": "verification",
+                "reason": "点击下载后出现验证，等待后仍未通过",
+                **debug_info,
+            }
+
+        if page_has_marker(page, PAID_MARKERS):
+            return paid_result(page, debug_dir, paper)
+
+        debug_info = save_debug_snapshot(page, debug_dir, paper)
+        return {
+            "status": "failed",
+            "reason": "未找到 PDF 下载按钮",
+            **debug_info,
+        }
 
     if not is_pdf(out_path):
         out_path.unlink(missing_ok=True)
@@ -119,19 +276,40 @@ def main() -> int:
     parser.add_argument("--input", required=True)
     parser.add_argument("--workspace", default="./literature-review")
     parser.add_argument("--delay", type=float, default=5.0)
-    parser.add_argument("--manual-wait", type=int, default=60)
+    parser.add_argument("--manual-wait", type=int, default=60,
+                        help="打开知网首页后的等待秒数；已确认无需认证时设为 0")
+    parser.add_argument("--verify-wait", type=int, default=120,
+                        help="详情页触发验证码/安全验证时的等待秒数")
+    parser.add_argument("--retry-failed", type=int, default=1,
+                        help="批量结束后重试普通失败文献的轮数")
+    parser.add_argument("--no-replace-paid", action="store_true",
+                        help="遇到付费下载页面时不从候选列表补充替换文献")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--clean", action="store_true", help="下载前清理旧的 PDF、meta 和 text 文件")
     args = parser.parse_args()
+
+    if sync_playwright is None:
+        raise SystemExit("pip install playwright && playwright install chromium")
+
+    if args.manual_wait < 0:
+        print("错误: --manual-wait 不能小于 0", file=sys.stderr)
+        return 1
+    if args.verify_wait < 0 or args.retry_failed < 0:
+        print("错误: --verify-wait 和 --retry-failed 不能小于 0", file=sys.stderr)
+        return 1
 
     root = Path(args.workspace).resolve()
     pdf_dir = root / "papers" / "pdf"
     meta_dir = root / "papers" / "meta"
     text_dir = root / "papers" / "text"
+    debug_dir = root / "logs" / "download-debug"
     log_path = root / "logs" / "download.log"
 
     pdf_dir.mkdir(parents=True, exist_ok=True)
-    papers = load_selected(Path(args.input).resolve())
+    papers, replacements = load_candidates(Path(args.input).resolve())
+    target_count = len(papers)
+    used_titles = {p.get("title", "") for p in papers}
+    replacement_no = next_id_number(papers)
 
     if args.clean:
         for d, pat in [(pdf_dir, "*.pdf"), (meta_dir, "*.json"), (text_dir, "*.txt")]:
@@ -144,46 +322,95 @@ def main() -> int:
         return 1
 
     print(f"待下载 {len(papers)} 篇（需机构 IP 认证）")
+    if replacements:
+        print(f"候选替补 {len(replacements)} 篇（付费页可自动补位）")
 
     ok, fail = 0, 0
+    retry_queue = []
+
+    def handle_result(paper: dict, result: dict, allow_replace: bool = True) -> None:
+        nonlocal fail, ok, replacement_no
+        save_meta(meta_dir, paper, result)
+        title = paper.get("title", "")[:40]
+        pid = paper["id"]
+        log_line = f"{'OK' if result.get('status') in ('ok','cached') else 'FAIL'} {pid} {title} [{result.get('status')}]"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as lf:
+            lf.write(log_line + "\n")
+
+        if result.get("status") in ("ok", "cached"):
+            print(f"  OK -> {result.get('pdf_file')}")
+            ok += 1
+            return
+
+        print(f"  FAIL: {result.get('reason', 'unknown')}")
+        fail += 1
+
+        if result.get("status") in RETRY_STATUSES:
+            retry_queue.append(paper)
+
+        if allow_replace and not args.no_replace_paid and result.get("status") in REPLACE_STATUSES:
+            replacement, replacement_no = pop_replacement(replacements, used_titles, replacement_no)
+            if replacement:
+                papers.append(replacement)
+                print(f"  替补加入: {replacement['id']} {replacement.get('title', '')[:40]}...")
+            else:
+                print("  无可用替补文献")
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=args.headless)
         context = browser.new_context(accept_downloads=True)
         page = context.new_page()
 
-        print(f"打开知网首页，等待机构认证（最多 {args.manual_wait}s）...")
+        if args.headless and args.manual_wait > 0:
+            print(f"打开知网首页，headless 模式等待 {args.manual_wait}s（无法人工处理验证码/登录）...")
+        elif args.manual_wait > 0:
+            print(f"打开知网首页，等待机构认证或验证码处理（最多 {args.manual_wait}s）...")
+        else:
+            print("打开知网首页，跳过机构认证等待（--manual-wait 0）...")
         page.goto(CNKI_HOME, wait_until="domcontentloaded", timeout=60000)
-        time.sleep(args.manual_wait if not args.headless else 5)
+        if args.manual_wait > 0:
+            time.sleep(args.manual_wait)
 
-        for i, paper in enumerate(papers):
+        i = 0
+        while i < len(papers):
+            paper = papers[i]
             pid = paper["id"]
             title = paper.get("title", "")[:40]
             print(f"[{i+1}/{len(papers)}] {pid} {title}...")
 
             try:
-                result = try_download_pdf(page, pdf_dir, paper)
+                result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
             except Exception as exc:
                 result = {"status": "failed", "reason": str(exc)}
 
-            save_meta(meta_dir, paper, result)
-            log_line = f"{'OK' if result.get('status') in ('ok','cached') else 'FAIL'} {pid} {title}"
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            with log_path.open("a", encoding="utf-8") as lf:
-                lf.write(log_line + "\n")
+            handle_result(paper, result)
 
-            if result.get("status") in ("ok", "cached"):
-                print(f"  OK -> {result.get('pdf_file')}")
-                ok += 1
-            else:
-                print(f"  FAIL: {result.get('reason', 'unknown')}")
-                fail += 1
-
-            if i < len(papers) - 1:
+            i += 1
+            if i < len(papers):
                 time.sleep(args.delay)
+
+        for round_no in range(args.retry_failed):
+            if not retry_queue:
+                break
+            current_retry = retry_queue
+            retry_queue = []
+            print(f"\n重试普通失败文献（第 {round_no + 1}/{args.retry_failed} 轮，共 {len(current_retry)} 篇）")
+            for ri, paper in enumerate(current_retry):
+                pid = paper["id"]
+                title = paper.get("title", "")[:40]
+                print(f"[retry {ri+1}/{len(current_retry)}] {pid} {title}...")
+                try:
+                    result = try_download_pdf(page, pdf_dir, debug_dir, paper, args.verify_wait)
+                except Exception as exc:
+                    result = {"status": "failed", "reason": str(exc)}
+                handle_result(paper, result, allow_replace=False)
+                if ri < len(current_retry) - 1:
+                    time.sleep(args.delay)
 
         browser.close()
 
-    print(f"\n完成: 成功 {ok}, 失败 {fail}")
+    print(f"\n完成: 成功 {ok}, 失败 {fail}, 目标 {target_count}")
     return 0 if ok > 0 else 2
 
 

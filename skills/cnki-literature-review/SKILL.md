@@ -1,7 +1,7 @@
 ---
 name: cnki-literature-review
 version: 2.1.0
-description: "知网(CNKI)文献调研全流程：多关键词检索、PDF下载、全文提取、智能筛选与结构化综述。合并了agent-browser与literature-research的能力，支持Playwright脚本自动化和agent-browser交互浏览两种模式。适用于文献综述、论文调研、知网下载、学术检索、开题报告、研究现状梳理等场景。"
+description: "知网(CNKI)文献调研全流程：多关键词检索、PDF下载、全文提取、智能筛选与结构化综述。支持Playwright脚本自动化和agent-browser交互浏览两种模式。适用于文献综述、论文调研、知网下载、学术检索、开题报告、研究现状梳理等场景。"
 metadata:
   requires:
     bins: ["python3"]
@@ -10,19 +10,9 @@ metadata:
     bins: ["agent-browser"]
 ---
 
-# 知网文献调研（CNKI Literature Review v2）
+# 知网文献调研（CNKI Literature Review）
 
 > **网络前提：** 必须在高校机构 IP 环境下执行（校园网或 VPN）。
-
-## 相比 v1 的核心改进
-
-| v1 问题 | v2 解决方案 | 改进效果 |
-|----------|-------------|----------|
-| DOM 选择器随页面改版失效 | JS `page.evaluate()` 直接从表格提取 | 解析成功率达 100% |
-| 单关键词覆盖不足 | 多关键词去重合并检索 | 候选文献从 20 篇扩展到 59 篇 |
-| 手工筛选耗时 | 期刊质量 + 主题相关性双评分自动筛选 | 入选 20 篇，剔除 K-12 噪声 |
-| 依赖 agent-browser（未安装） | Playwright 优先，agent-browser 兜底 | 零前置安装门槛 |
-| PDF 下载 ID 冲突 | 重命名至唯一 ID（snki-xxx） | 20/20 无冲突 |
 
 ## 何时使用
 
@@ -103,6 +93,7 @@ python3 scripts/cnki_search.py \
   --year-from 2025 \
   --year-to 2026 \
   --max-results 40 \
+  --result-timeout 20 \
   --output ./literature-review/search/candidates.json
 ```
 
@@ -114,6 +105,7 @@ python3 scripts/cnki_search.py \
 | `--year-from` | 当前年份-1 | 起始年份 |
 | `--year-to` | 当前年份 | 结束年份 |
 | `--max-results` | 40 | 每组关键词最多获取篇数 |
+| `--result-timeout` | 20 | 等待结果表或无结果提示的最长秒数，避免少结果/无结果时卡在页面后台请求 |
 | `--headless` | false | 是否无头模式 |
 
 ### JS 提取原理
@@ -133,6 +125,8 @@ rows.forEach(row => {
 
 ### 容错机制
 
+脚本使用 `domcontentloaded` 后自行轮询结果表，不再依赖 `networkidle`。如果搜索结果很少、页面提示无结果，或 CNKI 后台请求持续不断，脚本会在 `--result-timeout` 到达后按当前解析结果继续，避免单组关键词长时间卡住。
+
 如果 JS 提取也失败，使用 agent-browser 交互模式兜底：
 
 ```bash
@@ -149,13 +143,14 @@ agent-browser get text body > page.txt
 ```bash
 python3 scripts/curate.py \
   --input ./literature-review/search/candidates.json \
-  --topic "工程实践教学" \
+  --topic "工程实践,教学,实践教学" \
   --max 20 \
   --sort-by citations
 ```
 
 筛选逻辑：**主题相关性评分**（从 `--topic` 拆分关键词匹配），可选叠加期刊质量过滤（`--journal-list`）。
 
+- `--topic`：主题关键词，支持逗号、顿号、分号、空格或 `AND/OR/NOT` 分隔；例如 `"工程实践,教学"`、`"工程实践 教学"`、`"工程实践 AND 教学"` 都会解析为多个关键词
 - `--journal-list`：逗号分隔的目标期刊列表，传入后按期刊白名单过滤；不传则不做期刊过滤，仅按主题相关性打分
 - 自动过滤 K-12 学段论文（识别"小学""初中""高中""校本"等关键词）
 - 主题关键词自动从调研主题拆分，计算 relevance_score
@@ -174,6 +169,21 @@ python3 scripts/cnki_download.py \
   --workspace ./literature-review \
   --delay 5
 
+# 已确认当前网络无需登录/验证码时，跳过首页等待
+python3 scripts/cnki_download.py \
+  --input ./literature-review/search/candidates.json \
+  --workspace ./literature-review \
+  --delay 5 \
+  --manual-wait 0
+
+# 详情页可能触发验证码时，跳过首页等待，但允许验证码页人工处理
+python3 scripts/cnki_download.py \
+  --input ./literature-review/search/candidates.json \
+  --workspace ./literature-review \
+  --delay 5 \
+  --manual-wait 0 \
+  --verify-wait 120
+
 # 如果重新筛选后 ID 变化，建议加 --clean 清理旧文件避免残留
 python3 scripts/cnki_download.py \
   --input ./literature-review/search/candidates.json \
@@ -184,14 +194,34 @@ python3 scripts/cnki_download.py \
 行为：
 1. 读取 `selected: true` 的文献
 2. **ID 重复检查**：若存在重复 ID，直接报错退出，提示重新运行 `curate.py`
-3. 打开知网首页，等待机构认证
+3. 打开知网首页，根据 `--manual-wait` 等待机构认证/验证码；已确认无需认证时设为 `--manual-wait 0`
 4. 逐篇打开详情页，点击 PDF 下载按钮
 5. 保存至 `papers/pdf/` → 命名 `cnki-XXX.pdf`（curate.py 已确保 ID 唯一）
 6. **缓存复用**：若 PDF 已存在且有效，标记 `cached` 跳过下载（多次运行共用同一 PDF）
 7. `--clean`：下载前清理旧的 PDF/meta/text 文件，避免 ID 重新分配后残留旧文件
-8. 更新 meta JSON，失败不中断
+8. 若详情页触发验证码/安全验证，等待 `--verify-wait` 秒，人工处理后重试当前文献
+9. 若页面提示需要付费下载，标记为 `paid` 并从候选列表中追加未选文献作为替补
+10. 批量结束后，对普通失败文献按 `--retry-failed` 再重试，适合验证码处理后补下载
+11. 更新 meta JSON，失败不中断；若未找到 PDF 下载按钮，保存页面 HTML 和截图到 `logs/download-debug/`
+
+参数建议：
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--manual-wait` | 60 | 首页等待秒数；首次认证/验证码可设 120，确认无需认证时设 0 |
+| `--verify-wait` | 120 | 详情页出现验证码/安全验证时的等待秒数；已确认不会触发可设 0 |
+| `--retry-failed` | 1 | 批量结束后重试普通失败文献的轮数 |
+| `--no-replace-paid` | false | 遇到付费下载页时不追加替补文献 |
+| `--headless` | false | 无界面运行；只适合无需人工处理登录、验证码或机构认证的环境 |
+| `--delay` | 5 | 篇间等待秒数，避免触发风控 |
 
 **下载前务必确认：** 访问 https://www.cnki.net 显示机构名称（如「XX大学图书馆」）。
+
+如果命令使用 `--manual-wait 0` 但某篇详情页中途弹出验证码，不要停止脚本；在可见浏览器中完成验证，脚本会在 `--verify-wait` 内检测并继续。若验证处理较晚，脚本还会在批量结束后按 `--retry-failed` 重试普通失败项。
+
+如果某篇页面明确提示「付费下载」「购买」「余额不足」等，脚本会跳过该篇并从 `candidates.json` 中的未选文献追加替补；补位文献会分配新的 `cnki-XXX` ID，并保留 `original_id`。
+
+如果某篇失败并提示「未找到 PDF 下载按钮」，优先查看 `logs/download-debug/{id}_*.png` 和对应 HTML，判断是无 PDF 入口、CAJ-only、权限/登录页，还是页面结构需要补充选择器。
 
 ---
 
@@ -306,13 +336,13 @@ npm i -g agent-browser
 
 ---
 
-## 实战经验（来自工程实践教学调研）
+## 常见注意事项
 
-| 阶段 | 踩过的坑 | 正确的做法 |
+| 阶段 | 常见问题 | 处理方式 |
 |------|----------|------------|
 | 搜索 | DOM 选择器 `page.locator("td.name")` 解析失败 | `page.evaluate()` 直接提取 `td.textContent` |
-| 去重 | 单关键词仅 20 篇，含 K-12 噪声 | 3 组关键词去重后 59 篇 |
-| 筛选 | 人工逐条判断耗时 | 期刊白名单 + 主题关键词双维度自动打分 |
+| 去重 | 单关键词覆盖不足，可能混入 K-12 噪声 | 使用多组关键词检索、去重，并启用 K-12 过滤 |
+| 筛选 | 人工逐条判断耗时 | 使用期刊白名单 + 主题关键词双维度自动打分 |
 | 筛选 | 筛选后多篇论文共享同一 ID（如 cnki-005），下载时互相覆盖 | `curate.py` 筛选后自动重新分配唯一 ID（cnki-001~cnki-N） |
 | 下载 | ID 冲突导致部分 PDF 覆盖 | `cnki_download.py` 启动时检测重复 ID 并报错，`--clean` 清理旧文件 |
 | 下载 | 多次任务下载同一篇文献重复浪费 | 缓存机制：已存在的有效 PDF 标记 `cached` 跳过下载 |
