@@ -24,6 +24,12 @@ main { max-width: 860px; margin: 0 auto; padding: 20px; }
 .card h3 { margin: 12px 0 6px; font-size: 1.05em; }
 .formula-block { background: #fafbfc; border: 1px solid #e8ecf0; border-radius: 8px; padding: 16px 20px; margin: 10px 0; overflow-x: auto; font-size: 1.15em; }
 .formula-block.highlight { border-color: var(--primary); background: var(--light); }
+.formula { font-family: "Times New Roman", "Cambria Math", serif; font-size: 1.08em; white-space: nowrap; }
+.formula-line { display: block; text-align: center; font-family: "Times New Roman", "Cambria Math", serif; font-size: 1.12em; }
+.formula-stack { display: grid; gap: 6px; justify-items: center; font-family: "Times New Roman", "Cambria Math", serif; }
+.frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; line-height: 1.25; }
+.frac .num { border-bottom: 1px solid currentColor; padding: 0 0.25em 0.08em; }
+.frac .den { padding-top: 0.08em; }
 .step-content { display: none; }
 .step-content.active { display: block; }
 #interactive-controls { max-width: 860px; margin: 0 auto; padding: 0 20px 10px; }
@@ -63,7 +69,7 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
     <div class="card step-content active" data-step="1" data-discipline="math">
       <h2>步骤 1：问题引入</h2>
       <p>考虑一般形式的一元二次方程：</p>
-      <div class="formula-block">$$ ax^2 + bx + c = 0 \quad (a \neq 0) $$</div>
+      <div class="formula-block"><span class="formula-line">ax<sup>2</sup> + bx + c = 0（a &ne; 0）</span></div>
       <p>目标：找到 <strong>x</strong> 的通解公式，即用系数 a, b, c 表达 x。</p>
       <details><summary>为什么需要通解公式？</summary><p>对于任意给定的一元二次方程，如果每次都手工配平方，效率很低。通解公式使我们可以代入 a, b, c 直接计算结果。</p></details>
     </div>
@@ -71,9 +77,9 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
     <div class="card step-content" data-step="2" data-discipline="math">
       <h2>步骤 2：移项与系数化一</h2>
       <p>将常数项移到等式右边：</p>
-      <div class="formula-block">$$ ax^2 + bx = -c $$</div>
+      <div class="formula-block"><span class="formula-line">ax<sup>2</sup> + bx = -c</span></div>
       <p>两边同时除以 a（因为 a ≠ 0）：</p>
-      <div class="formula-block highlight">$$ x^2 + \frac{b}{a}x = -\frac{c}{a} $$</div>
+      <div class="formula-block highlight"><span class="formula-line">x<sup>2</sup> + <span class="frac"><span class="num">b</span><span class="den">a</span></span>x = -<span class="frac"><span class="num">c</span><span class="den">a</span></span></span></div>
       <p>现在方程变成了 <code>x² + px = q</code> 的形式，这是配平方的标准起点。</p>
     </div>
 
@@ -81,17 +87,17 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
       <h2>步骤 3：配平方</h2>
       <p>配方原理：<code>x² + px</code> 加上 <code>(p/2)²</code> 后成为完全平方 <code>(x + p/2)²</code>。</p>
       <p>这里 p = b/a，所以需要在等式两边同时加上 <code>(b/(2a))²</code>：</p>
-      <div class="formula-block">$$ x^2 + \frac{b}{a}x + \left(\frac{b}{2a}\right)^2 = -\frac{c}{a} + \left(\frac{b}{2a}\right)^2 $$</div>
+      <div class="formula-block"><span class="formula-line">x<sup>2</sup> + <span class="frac"><span class="num">b</span><span class="den">a</span></span>x + (<span class="frac"><span class="num">b</span><span class="den">2a</span></span>)<sup>2</sup> = -<span class="frac"><span class="num">c</span><span class="den">a</span></span> + (<span class="frac"><span class="num">b</span><span class="den">2a</span></span>)<sup>2</sup></span></div>
       <p>左边可写成完全平方：</p>
-      <div class="formula-block highlight">$$ \left(x + \frac{b}{2a}\right)^2 = \frac{b^2 - 4ac}{4a^2} $$</div>
+      <div class="formula-block highlight"><span class="formula-line">(x + <span class="frac"><span class="num">b</span><span class="den">2a</span></span>)<sup>2</sup> = <span class="frac"><span class="num">b<sup>2</sup> - 4ac</span><span class="den">4a<sup>2</sup></span></span></span></div>
     </div>
 
     <div class="card step-content" data-step="4" data-discipline="math">
       <h2>步骤 4：开方求解</h2>
       <p>对等式两边开平方：</p>
-      <div class="formula-block">$$ x + \frac{b}{2a} = \pm\sqrt{\frac{b^2 - 4ac}{4a^2}} = \pm\frac{\sqrt{b^2 - 4ac}}{2|a|} $$</div>
+      <div class="formula-block"><span class="formula-line">x + <span class="frac"><span class="num">b</span><span class="den">2a</span></span> = &plusmn;&radic;<span class="frac"><span class="num">b<sup>2</sup> - 4ac</span><span class="den">4a<sup>2</sup></span></span></span></div>
       <p>最终得到一元二次方程求根公式：</p>
-      <div class="formula-block highlight">$$ x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a} $$</div>
+      <div class="formula-block highlight"><span class="formula-line">x = <span class="frac"><span class="num">-b &plusmn; &radic;(b<sup>2</sup> - 4ac)</span><span class="den">2a</span></span></span></div>
       <p>其中 <strong>Δ = b² - 4ac</strong> 称为判别式，决定根的性质：</p>
       <ul><li>Δ &gt; 0 → 两个不等实根</li><li>Δ = 0 → 两个相等实根</li><li>Δ &lt; 0 → 两个共轭复根</li></ul>
     </div>
@@ -104,7 +110,7 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
     <div class="card step-content" data-step="1" data-discipline="physics">
       <h2>步骤 1：牛顿第二定律</h2>
       <p>牛顿第二定律描述了力与运动的关系：</p>
-      <div class="formula-block">$$ F = ma $$</div>
+      <div class="formula-block"><span class="formula-line">F = ma</span></div>
       <p>F — 合外力（N），m — 物体质量（kg），a — 加速度（m/s²）</p>
       <p>这是经典力学的核心方程。今天我们从它出发，推导匀加速直线运动的全套公式。</p>
     </div>
@@ -112,26 +118,26 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
     <div class="card step-content" data-step="2" data-discipline="physics">
       <h2>步骤 2：从力到加速度</h2>
       <p>如果合外力 F 是常数，则加速度 a 也是常数：</p>
-      <div class="formula-block">$$ a = \frac{F}{m} = \text{const} $$</div>
+      <div class="formula-block"><span class="formula-line">a = <span class="frac"><span class="num">F</span><span class="den">m</span></span> = const</span></div>
       <p>加速度是速度对时间的导数：<code>a = dv/dt</code>。积分可得：</p>
-      <div class="formula-block highlight">$$ v(t) = v_0 + at $$</div>
+      <div class="formula-block highlight"><span class="formula-line">v(t) = v<sub>0</sub> + at</span></div>
       <p>其中 v₀ 是初始速度（t=0 时的速度）。</p>
     </div>
 
     <div class="card step-content" data-step="3" data-discipline="physics">
       <h2>步骤 3：从速度到位移</h2>
       <p>速度是位移对时间的导数：<code>v = dx/dt</code>。对 v(t) 积分：</p>
-      <div class="formula-block">$$ x(t) = \int_0^t (v_0 + a\tau)\,d\tau = v_0 t + \frac{1}{2}at^2 $$</div>
+      <div class="formula-block"><span class="formula-line">x(t) = 从 0 到 t 对 (v<sub>0</sub> + aτ) 积分 = v<sub>0</sub>t + <span class="frac"><span class="num">1</span><span class="den">2</span></span>at<sup>2</sup></span></div>
       <p>如果初始位置为 x₀：</p>
-      <div class="formula-block highlight">$$ x(t) = x_0 + v_0 t + \frac{1}{2}at^2 $$</div>
+      <div class="formula-block highlight"><span class="formula-line">x(t) = x<sub>0</sub> + v<sub>0</sub>t + <span class="frac"><span class="num">1</span><span class="den">2</span></span>at<sup>2</sup></span></div>
     </div>
 
     <div class="card step-content" data-step="4" data-discipline="physics">
       <h2>步骤 4：速度-位移关系</h2>
       <p>消去时间 t 可得到不依赖时间的速度-位移关系：</p>
-      <div class="formula-block">$$ v^2 = v_0^2 + 2a(x - x_0) $$</div>
+      <div class="formula-block"><span class="formula-line">v<sup>2</sup> = v<sub>0</sub><sup>2</sup> + 2a(x - x<sub>0</sub>)</span></div>
       <p>这就是匀加速直线运动的三公式：</p>
-      <div class="formula-block highlight">$$ \begin{aligned} v &= v_0 + at \\ x &= x_0 + v_0 t + \frac{1}{2}at^2 \\ v^2 &= v_0^2 + 2a(x - x_0) \end{aligned} $$</div>
+      <div class="formula-block highlight"><span class="formula-stack"><span>v = v<sub>0</sub> + at</span><span>x = x<sub>0</sub> + v<sub>0</sub>t + <span class="frac"><span class="num">1</span><span class="den">2</span></span>at<sup>2</sup></span><span>v<sup>2</sup> = v<sub>0</sub><sup>2</sup> + 2a(x - x<sub>0</sub>)</span></span></div>
     </div>
 
   </div>
@@ -142,30 +148,30 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
     <div class="card step-content" data-step="1" data-discipline="chemistry">
       <h2>步骤 1：酸碱中和反应</h2>
       <p>盐酸与氢氧化钠的反应是最经典的酸碱中和：</p>
-      <div class="formula-block">$$ \ce{HCl + NaOH -> NaCl + H2O} $$</div>
+      <div class="formula-block"><span class="formula-line">HCl + NaOH &rarr; NaCl + H<sub>2</sub>O</span></div>
       <p>酸（HCl 提供 H⁺）+ 碱（NaOH 提供 OH⁻）→ 盐 + 水。</p>
     </div>
 
     <div class="card step-content" data-step="2" data-discipline="chemistry">
       <h2>步骤 2：离子方程视角</h2>
       <p>在溶液中，强电解质完全电离。写出离子方程式：</p>
-      <div class="formula-block">$$ \ce{H+ + Cl- + Na+ + OH- -> Na+ + Cl- + H2O} $$</div>
+      <div class="formula-block"><span class="formula-line">H<sup>+</sup> + Cl<sup>-</sup> + Na<sup>+</sup> + OH<sup>-</sup> &rarr; Na<sup>+</sup> + Cl<sup>-</sup> + H<sub>2</sub>O</span></div>
       <p>Na⁺ 和 Cl⁻ 在反应前后不变（旁观离子），消去后得到净离子方程式：</p>
-      <div class="formula-block highlight">$$ \ce{H+ + OH- -> H2O} $$</div>
+      <div class="formula-block highlight"><span class="formula-line">H<sup>+</sup> + OH<sup>-</sup> &rarr; H<sub>2</sub>O</span></div>
       <p>这揭示了酸碱中和的本质：H⁺ 与 OH⁻ 结合生成水。</p>
     </div>
 
     <div class="card step-content" data-step="3" data-discipline="chemistry">
       <h2>步骤 3：氧化还原配平</h2>
       <p>以高锰酸钾氧化二价铁为例：</p>
-      <div class="formula-block">$$ \ce{MnO4- + Fe^{2+} + H+ -> Mn^{2+} + Fe^{3+} + H2O} $$</div>
+      <div class="formula-block"><span class="formula-line">MnO<sub>4</sub><sup>-</sup> + Fe<sup>2+</sup> + H<sup>+</sup> &rarr; Mn<sup>2+</sup> + Fe<sup>3+</sup> + H<sub>2</sub>O</span></div>
       <p>半反应法配平：</p>
       <p><strong>还原半反应：</strong></p>
-      <div class="formula-block">$$ \ce{MnO4- + 8H+ + 5e- -> Mn^{2+} + 4H2O} $$</div>
+      <div class="formula-block"><span class="formula-line">MnO<sub>4</sub><sup>-</sup> + 8H<sup>+</sup> + 5e<sup>-</sup> &rarr; Mn<sup>2+</sup> + 4H<sub>2</sub>O</span></div>
       <p><strong>氧化半反应：</strong></p>
-      <div class="formula-block">$$ \ce{Fe^{2+} -> Fe^{3+} + e-} $$</div>
+      <div class="formula-block"><span class="formula-line">Fe<sup>2+</sup> &rarr; Fe<sup>3+</sup> + e<sup>-</sup></span></div>
       <p>电子数均衡（×5），合并得：</p>
-      <div class="formula-block highlight">$$ \ce{MnO4- + 5Fe^{2+} + 8H+ -> Mn^{2+} + 5Fe^{3+} + 4H2O} $$</div>
+      <div class="formula-block highlight"><span class="formula-line">MnO<sub>4</sub><sup>-</sup> + 5Fe<sup>2+</sup> + 8H<sup>+</sup> &rarr; Mn<sup>2+</sup> + 5Fe<sup>3+</sup> + 4H<sub>2</sub>O</span></div>
     </div>
 
   </div>
@@ -195,7 +201,7 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
 
     <div class="card step-content" data-step="4" data-discipline="cs">
       <h2>步骤 4：复杂度分析</h2>
-      <div class="formula-block">$$ \text{最坏时间复杂度：} O(n^2) \quad \text{最好时间复杂度：} O(n) \quad \text{平均：} O(n^2) $$</div>
+      <div class="formula-block"><span class="formula-line">最坏时间复杂度：O(n<sup>2</sup>)　最好时间复杂度：O(n)　平均：O(n<sup>2</sup>)</span></div>
       <p>空间复杂度 O(1)（原地排序）。冒泡排序简单直观，但对于大数据集效率低，通常用作教学示例。</p>
     </div>
 
@@ -218,42 +224,7 @@ footer { text-align: center; color: #9aa4b2; font-size: 0.85em; padding: 20px; }
 
 <footer><p>生成工具：Trae Solo | 可离线使用</p></footer>
 
-<!-- CDN fallback system -->
-<link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.css"
-      onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'">
 <script>
-var KA_TEX_CSS = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.css';
-var KA_TEX_CSS_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-var KA_TEX_JS = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.js';
-var KA_TEX_JS_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
-var KA_TEX_AR = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/auto-render.min.js';
-var KA_TEX_AR_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js';
-var KA_TEX_MH = 'https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/mhchem.min.js';
-var KA_TEX_MH_FB = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/mhchem.min.js';
-</script>
-
-<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/katex.min.js"
-        onerror="this.onerror=null;this.src=KA_TEX_JS_FB"></script>
-<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/auto-render.min.js"
-        onerror="this.onerror=null;this.src=KA_TEX_AR_FB"></script>
-<script src="https://cdn.bootcdn.net/ajax/libs/kaTeX/0.16.9/contrib/mhchem.min.js"
-        onerror="this.onerror=null;this.src=KA_TEX_MH_FB"></script>
-
-<script>
-// ========== Render formulas ==========
-function renderAllFormulas() {
-  if (typeof renderMathInElement === 'function') {
-    renderMathInElement(document.body, {
-      delimiters: [
-        {left: '$$', right: '$$', display: true},
-        {left: '$', right: '$', display: false}
-      ],
-      strict: false,
-      trust: true
-    });
-  }
-}
-
 // ========== Discipline switching ==========
 var currentDiscipline = 'math';
 var currentStep = 1;
@@ -296,7 +267,6 @@ function goToStep(n, d) {
   document.getElementById('step-num').textContent = currentStep;
   document.getElementById('prev-step').disabled = (currentStep <= 1);
   document.getElementById('next-step').disabled = (currentStep >= steps.length);
-  renderAllFormulas();
 }
 
 document.getElementById('prev-step').addEventListener('click', function() {
@@ -329,7 +299,6 @@ function bubbleSortVis(arr) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  renderAllFormulas();
   updateSteps('math');
   document.getElementById('step-num').textContent = '1';
 
@@ -345,9 +314,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 });
-
-// Render after KaTeX loads
-setTimeout(renderAllFormulas, 800);
 </script>
 
 </body>

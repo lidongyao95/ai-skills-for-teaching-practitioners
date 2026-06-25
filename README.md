@@ -13,7 +13,7 @@
 - **工具生态** — 使用 Trae Solo 作为 AI 工具（不使用 Coze 或其他 Agent 平台）
 - **自包含** — 每个 SKILL.md 独立完整，不依赖其他技能
 - **可组合** — 技能可按需组合成不同时长的培训课程
-- **网络环境约束** — 所有 AI 执行任务不得要求学习者配置翻墙工具。连接 GitHub（git clone、push、pull）不受此限。所有命令行中的 Python 包安装、Node 包安装等环境依赖，必须指定国内镜像源（清华 TUNA 或阿里云）。CDN 资源优先使用国内节点（bootcdn.cn、jsdelivr.net）。禁止使用需要科学上网才能访问的外部 API 或在线服务。
+- **网络环境约束** — 所有 AI 执行任务不得要求学习者配置翻墙工具。连接 GitHub（git clone、push、pull）不受此限。所有命令行中的 Python 包安装、Node 包安装等环境依赖，必须指定国内镜像源（清华 TUNA 或阿里云）。CDN 资源优先使用国内节点（bootcdn.cn、jsdelivr.net）。禁止使用需要科学上网才能访问的外部 API 或在线服务。若具体 skill 声明更严格的离线/本地化约束（如 `generate-teaching-html`），以该 skill 的约束为准。
 
 ## 项目结构
 
