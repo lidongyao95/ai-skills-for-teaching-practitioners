@@ -30,7 +30,7 @@
 
 ## 首次运行：人工认证窗口
 
-`cnki_download.py` 默认 `--headless false`，首次运行会：
+`cnki_download.py` 默认打开有界面 Chromium 窗口，首次运行会：
 
 1. 打开 Chromium 窗口
 2. 等待 `--manual-wait` 秒
@@ -39,7 +39,7 @@
 ## 常见问题
 
 ### 1. 出现滑动验证码
-- 保持 `--headless false`
+- 在打开的 Chromium 窗口中处理
 - 人工完成验证
 - 增大 `--delay` 至 5-8 秒
 

@@ -8,6 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+from cnki_page_utils import (
+    page_has_verification_signal,
+    page_text,
+    wait_for_verification_state,
+)
+
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
@@ -16,14 +22,6 @@ except ImportError:
 CNKI_HOME = "https://www.cnki.net"
 PDF_BUTTON_TEXTS = ["PDF下载", "PDF 下载", "下载PDF", "pdf下载", "PDF"]
 DOWNLOAD_EVENT_WAIT_MS = 20_000
-VERIFY_MARKERS = [
-    "验证码",
-    "安全验证",
-    "人机验证",
-    "拖动滑块",
-    "滑块验证",
-    "请完成验证",
-]
 PAID_MARKERS = [
     "付费下载",
     "需要付费",
@@ -154,18 +152,6 @@ def save_debug_snapshot(page, debug_dir: Path, paper: dict) -> dict:
     return info
 
 
-def page_text(page) -> str:
-    try:
-        return page.evaluate("() => document.body ? document.body.innerText : ''")
-    except Exception:
-        return ""
-
-
-def page_has_marker(page, markers: list[str]) -> bool:
-    compact = re.sub(r"\s+", "", page_text(page))
-    return any(marker in compact for marker in markers)
-
-
 def text_has_paid_marker(text: str) -> bool:
     compact = re.sub(r"\s+", "", text)
     if any(marker in compact for marker in PAID_MARKERS):
@@ -227,50 +213,13 @@ def page_looks_like_article(page) -> bool:
 
 
 def is_verification_page(page) -> bool:
-    try:
-        url = page.url.lower()
-        title = page.title()
-    except Exception:
-        url = ""
-        title = ""
-
     if page_looks_like_article(page):
         return False
-    if "/verify/" in url or "captcha" in url:
-        return True
-    if "安全验证" in title:
-        return True
-    return page_has_marker(page, VERIFY_MARKERS)
+    return page_has_verification_signal(page)
 
 
 def wait_for_verification(page, verify_wait: int) -> bool:
-    if not is_verification_page(page):
-        return True
-
-    if verify_wait <= 0:
-        return False
-
-    print(f"  检测到验证页面，请在浏览器中完成验证（最多 {verify_wait}s）...")
-    deadline = time.monotonic() + verify_wait
-    next_status_at = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        page.wait_for_timeout(1000)
-        if time.monotonic() >= next_status_at:
-            try:
-                print(f"  仍在等待验证完成: {page.title()} {page.url}")
-            except Exception:
-                print("  仍在等待验证完成")
-            next_status_at = time.monotonic() + 10
-        if not is_verification_page(page):
-            try:
-                page.wait_for_load_state("domcontentloaded", timeout=5000)
-            except Exception:
-                pass
-            page.wait_for_timeout(1000)
-            if not is_verification_page(page):
-                print("  验证已完成，继续下载")
-                return True
-    return False
+    return wait_for_verification_state(page, verify_wait, is_verification_page, "继续下载")
 
 
 def close_paid_popups(main_page, popups: list) -> None:
@@ -386,14 +335,12 @@ def is_browser_closed_error(exc: Exception) -> bool:
 
 
 def open_download_session(playwright, args, initial: bool):
-    browser = playwright.chromium.launch(headless=args.headless)
+    browser = playwright.chromium.launch(headless=False)
     context = browser.new_context(accept_downloads=True)
     page = context.new_page()
 
     if initial:
-        if args.headless and args.manual_wait > 0:
-            print(f"打开知网首页，headless 模式等待 {args.manual_wait}s（无法人工处理验证码/登录）...")
-        elif args.manual_wait > 0:
+        if args.manual_wait > 0:
             print(f"打开知网首页，等待机构认证或验证码处理（最多 {args.manual_wait}s）...")
         else:
             print("打开知网首页，跳过机构认证等待（--manual-wait 0）...")
@@ -522,7 +469,6 @@ def main() -> int:
                         help="批量结束后重试普通失败文献的轮数")
     parser.add_argument("--no-replace-paid", action="store_true",
                         help="遇到付费下载页面时不从候选列表补充替换文献")
-    parser.add_argument("--headless", action="store_true", help="无头模式；CNKI 可能返回空白页，建议默认有界面运行")
     parser.add_argument("--clean", action="store_true", help="下载前清理旧的 PDF、meta 和 text 文件")
     args = parser.parse_args()
 

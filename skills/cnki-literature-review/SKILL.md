@@ -1,13 +1,11 @@
 ---
 name: cnki-literature-review
-version: 2.1.0
-description: "知网(CNKI)文献调研全流程：多关键词检索、PDF下载、全文提取、智能筛选与结构化综述。支持Playwright脚本自动化和agent-browser交互浏览两种模式。适用于文献综述、论文调研、知网下载、学术检索、开题报告、研究现状梳理等场景。"
+version: 2.2.4
+description: "知网(CNKI)文献调研全流程：多关键词检索、来源类别限定、候选精选、PDF下载、全文提取与结构化综述。使用有界面 Playwright 脚本自动化，适用于文献综述、论文调研、知网下载、学术检索、开题报告、研究现状梳理等场景。"
 metadata:
   requires:
     bins: ["python3"]
     python: ["playwright", "pymupdf"]
-  optional:
-    bins: ["agent-browser"]
 ---
 
 # 知网文献调研（CNKI Literature Review）
@@ -23,21 +21,53 @@ metadata:
 ## 工作流总览
 
 ```
-需求澄清 → 多关键词检索 → 智能筛选 → 下载 PDF → 提取全文 → 单篇摘要 → 综合综述
+需求澄清 → 带来源类别的多关键词检索 → 候选精选 → 下载 PDF → 提取全文 → 单篇摘要 → 综合综述
 ```
 
 复制此清单跟踪进度：
 
 ```
 - [ ] Step 0: 初始化工作目录
-- [ ] Step 1: 澄清调研需求（主题/关键词/时间/数量）
-- [ ] Step 2: 多关键词知网检索（JS提取模式）
-- [ ] Step 3: 智能筛选（期刊质量 + 主题相关性）
+- [ ] Step 1: 澄清调研需求（主题/关键词/年份/来源类别/数量）
+- [ ] Step 2: 多关键词知网检索（年份 + 来源类别在网页侧完成限定）
+- [ ] Step 3: 候选精选（主题相关性 + 排序 + ID 重排）
 - [ ] Step 4: 下载 PDF（需机构IP）
 - [ ] Step 5: 提取 PDF 全文
 - [ ] Step 6: 生成单篇结构化摘要
 - [ ] Step 7: 输出综合文献综述
 ```
+
+---
+
+## Step -1: 判断系统与命令写法
+
+执行脚本前先判断当前系统，再选择命令风格。Windows PowerShell 使用表中的替换写法运行脚本。
+
+macOS/Linux:
+
+```bash
+uname -s
+python3 --version
+```
+
+Windows PowerShell:
+
+```powershell
+[System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+py -3 --version
+```
+
+常见替换：
+
+| 用途 | macOS/Linux | Windows PowerShell |
+|------|-------------|--------------------|
+| Python 命令 | `python3 scripts/cnki_search.py` | `py -3 .\scripts\cnki_search.py` |
+| 虚拟环境 | `source .venv/bin/activate` | `. .\.venv\Scripts\Activate.ps1` |
+| 多行续行 | 行尾 `\` | 行尾 <code>`</code> |
+| 临时环境变量 | `PLAYWRIGHT_DOWNLOAD_HOST=... python3 -m playwright install chromium` | `$env:PLAYWRIGHT_DOWNLOAD_HOST="..."; py -3 -m playwright install chromium` |
+| 路径 | `./literature-review/search/candidates.json` | `.\literature-review\search\candidates.json` |
+
+后文默认展示 macOS/Linux 命令；若系统是 Windows，按上表改为 PowerShell 写法。
 
 ---
 
@@ -70,32 +100,50 @@ literature-review/
 | 主题 | 研究问题或领域 | 必填 |
 | 关键词 | 3-5组检索词（含同义词） | 主题扩展 |
 | 时间范围 | 发表年份 | 近一年半 |
-| 文献类型 | 期刊/硕博/会议 | 核心期刊 |
+| 来源类别 | CNKI 左侧「来源类别」选项 | 北大核心 |
+| 文献形态 | 期刊/硕博/会议等检索范围 | 期刊 |
 | 目标数量 | 最终纳入篇数 | 15-20 篇 |
 
 关键词设计原则：**覆盖同义表达、交叉领域、政策术语**。
 
 示例：主题=工程实践教学 → 关键词=["工程实践 AND 教学", "产教融合 AND 工程教育", "新工科 AND 实践教学", "工程训练 AND 教学改革", "工程实践能力 AND 培养"]
 
-将确认结果写入 `search/brief.json`。
+将确认结果写入 `search/brief.json`，其中 `source_categories` 使用网页选项名，例如 `["北大核心"]`、`["EI"]` 或 `["北大核心", "EI"]`。CNKI「来源类别」当前支持 `北大核心`、`CSCD`、`WJCI`、`EI`、`CSSCI`、`AMI`、`SCI`。
 
 ---
 
 ## Step 2: 多关键词知网检索
 
-### ⚠️ 核心原则：优先使用 JS evaluate 模式
+### 结果提取方式
 
-**切勿使用 DOM 选择器（`page.locator("table.result-table-list tr")` 等）**，知网页面结构频繁改版，选择器极易失效。经过实战验证，`page.evaluate()` 直接从表格 `td` 元数据提取是最可靠的方式。
+结果提取使用 `page.evaluate()` 直接读取表格 `td` 元数据。CNKI 页面结构频繁改版，候选解析应建立在结果行文本和链接元数据上，避免绑定单个易变定位器。
 
 ```bash
 python3 scripts/cnki_search.py \
   --keywords "工程实践 AND 教学,产教融合 AND 工程教育,新工科 AND 实践教学" \
   --year-from 2025 \
   --year-to 2026 \
+  --journal-types "北大核心" \
   --max-results 40 \
   --max-pages 10 \
   --result-timeout 20 \
+  --verify-wait 120 \
   --output ./literature-review/search/candidates.json
+```
+
+Windows PowerShell 示例：
+
+```powershell
+py -3 .\scripts\cnki_search.py `
+  --keywords "工程实践 AND 教学,产教融合 AND 工程教育,新工科 AND 实践教学" `
+  --year-from 2025 `
+  --year-to 2026 `
+  --journal-types "北大核心" `
+  --max-results 40 `
+  --max-pages 10 `
+  --result-timeout 20 `
+  --verify-wait 120 `
+  --output .\literature-review\search\candidates.json
 ```
 
 参数说明：
@@ -105,10 +153,13 @@ python3 scripts/cnki_search.py \
 | `--keywords` | 必填 | 逗号分隔的多组检索词 |
 | `--year-from` | 当前年份-1 | 起始年份 |
 | `--year-to` | 当前年份 | 结束年份 |
+| `--journal-types` | 空 | 逗号分隔的 CNKI「来源类别」筛选，支持网页选项 `北大核心`、`CSCD`、`WJCI`、`EI`、`CSSCI`、`AMI`、`SCI` |
+| `--core-journal` | false | 勾选 CNKI「来源类别」中的 `北大核心`，等价于用户说核心期刊 |
+| `--ei-journal` | false | 勾选 CNKI「来源类别」中的 `EI` |
 | `--max-results` | 40 | 每组关键词最多获取篇数 |
 | `--max-pages` | 10 | 每组关键词最多翻页数；年份过滤后结果不足时可调大 |
 | `--result-timeout` | 20 | 等待结果表或无结果提示的最长秒数，避免少结果/无结果时卡在页面后台请求 |
-| `--headless` | false | 是否无头模式；CNKI 可能返回空白页，优先使用默认有界面模式 |
+| `--verify-wait` | 120 | 搜索阶段检测到验证码/安全验证时的等待秒数；未检测到验证时不额外等待 |
 
 ### JS 提取原理
 
@@ -127,20 +178,23 @@ rows.forEach(row => {
 
 ### 容错机制
 
-脚本使用 `domcontentloaded` 后自行轮询结果表，不再依赖 `networkidle`。如果搜索结果很少、页面提示无结果，或 CNKI 后台请求持续不断，脚本会在 `--result-timeout` 到达后按当前解析结果继续，避免单组关键词长时间卡住。脚本会优先使用 CNKI 左侧「年度」分组应用 `--year-from/--year-to`，再按 `--max-pages` 翻页收集候选；若年度分组无法点击或没有目标年份，才用结果表日期做兜底过滤。注意：CNKI「年度」和结果表「发表时间」/上架日期可能不是同一口径，候选 JSON 中的 `year` 表示结果表日期解析出的年份；因此结果表年份超出筛选范围不代表年度分组未生效。
+脚本在 `domcontentloaded` 后先确认关键词已提交；如果 CNKI 只打开空搜索页，脚本会主动填写当前关键词并点击检索。随后轮询结果表和无结果提示。如果搜索结果很少、页面提示无结果，或 CNKI 后台请求持续不断，脚本会在 `--result-timeout` 到达后按当前解析结果继续，避免单组关键词长时间卡住。验证码/安全验证采用按需处理：只有等待结果、提交关键词、筛选或翻页过程中检测到验证页面时，脚本才会在有界面 Chromium 窗口等待 `--verify-wait` 秒；普通页面流转不会额外等待。脚本在进入翻页采集前先应用两个网页侧限定：CNKI 左侧「年度」分组对应 `--year-from/--year-to`，CNKI 左侧「来源类别」分组对应 `--journal-types`。核心期刊在网页上取 `北大核心`，EI 期刊取 `EI`，其他来源类别直接使用网页选项名。来源类别点选后必须观察到 URL 或结果列表变化，该组关键词才进入候选采集；成功写入 `candidates.json` 的数据即视为已按来源类别限定的候选池。注意：CNKI「年度」和结果表「发表时间」/上架日期可能不是同一口径，候选 JSON 中的 `year` 表示结果表日期解析出的年份；因此结果表年份超出筛选范围不代表年度分组未生效。
 
-如果 JS 提取也失败，使用 agent-browser 交互模式兜底：
+如果 Step 1 的 `source_categories` 包含多个来源类别，检索命令使用网页实际选项名：
 
 ```bash
-agent-browser open "https://kns.cnki.net/kns8s/defaultresult/index?kw=工程实践%20AND%20教学"
-agent-browser wait --load networkidle
-agent-browser get text body > page.txt
-# 从 page.txt 中手动提取论文信息，录入 candidates.json
+--journal-types "北大核心,EI,CSCD"
+```
+
+也可以使用快捷开关：
+
+```bash
+--core-journal --ei-journal
 ```
 
 ---
 
-## Step 3: 智能筛选
+## Step 3: 候选精选
 
 ```bash
 python3 scripts/curate.py \
@@ -150,10 +204,9 @@ python3 scripts/curate.py \
   --sort-by citations
 ```
 
-筛选逻辑：**主题相关性评分**（从 `--topic` 拆分关键词匹配），可选叠加期刊质量过滤（`--journal-list`）。
+输入是 Step 2 产出的 `candidates.json`。此时年份和来源类别已经在 CNKI 网页侧限定完成；本步骤只在该候选池内做主题命中、K-12 噪声排除、排序和 ID 重排。
 
 - `--topic`：主题关键词，支持逗号、顿号、分号、空格或 `AND/OR/NOT` 分隔；例如 `"工程实践,教学"`、`"工程实践 教学"`、`"工程实践 AND 教学"` 都会解析为多个关键词
-- `--journal-list`：逗号分隔的目标期刊列表，传入后按期刊白名单过滤；不传则不做期刊过滤，仅按主题相关性打分
 - 自动过滤 K-12 学段论文（识别"小学""初中""高中""校本"等关键词）
 - 主题关键词自动从调研主题拆分，计算 relevance_score
 - Fallback 机制：若入选不足，放宽阈值，按主题相关性补录
@@ -201,7 +254,7 @@ python3 scripts/cnki_download.py \
 6. **缓存复用**：若 PDF 已存在且有效，标记 `cached` 跳过下载（多次运行共用同一 PDF）
 7. `--clean`：下载前清理旧的 PDF/meta/text 文件，避免 ID 重新分配后残留旧文件
 8. 若详情页触发验证码/安全验证，等待 `--verify-wait` 秒，人工处理后重新打开原始文章 URL；点击 PDF 后若先跳转到验证码页，脚本会停止等待下载事件，验证通过后重新打开原始文章 URL 再点击下载
-9. 若详情页、点击下载后的当前页或新开页面出现明确付费提示，跳转到 CNKI `/bar/fee_*.html` 付费页，正文出现「选择下载方式」+「单篇下载/仅下载本文/价格/开通会员」等付费页组合信号，或进入 CNKI `a.cnki.net/gw/api/get/pdf/ads/` 占位 PDF，标记为 `paid` 并从候选列表中追加未选文献作为替补；页脚/导航中的「充值中心」等通用入口不作为付费依据。识别到付费页后会关闭新开的付费页，不再继续点击页面上的 PDF/广告 PDF 入口，也不会重试这篇付费文献。
+9. 若详情页、点击下载后的当前页或新开页面出现明确付费提示，跳转到 CNKI `/bar/fee_*.html` 付费页，正文出现「选择下载方式」+「单篇下载/仅下载本文/价格/开通会员」等付费页组合信号，或进入 CNKI `a.cnki.net/gw/api/get/pdf/ads/` 占位 PDF，标记为 `paid` 并从候选列表中追加未选文献作为替补；页脚/导航中的「充值中心」等通用入口只作为普通页面文本处理。识别到付费页后关闭新开的付费页，将该篇文献记为终态，并继续处理替补候选。
 10. 批量结束后，对普通失败文献按 `--retry-failed` 再重试，适合验证码处理后补下载
 11. 若浏览器页面、context 或 browser 被 CNKI 弹窗/用户操作关闭，脚本会重新打开浏览器会话并原地重试当前文献一次
 12. 更新 meta JSON，失败不中断；若未找到 PDF 下载按钮，保存页面 HTML 和截图到 `logs/download-debug/`
@@ -214,12 +267,11 @@ python3 scripts/cnki_download.py \
 | `--verify-wait` | 120 | 详情页出现验证码/安全验证时的等待秒数；脚本会用 URL、页面标题和正文综合判断验证是否完成 |
 | `--retry-failed` | 1 | 批量结束后重试普通失败文献的轮数 |
 | `--no-replace-paid` | false | 遇到付费下载页时不追加替补文献 |
-| `--headless` | false | 无界面运行；CNKI 可能返回空白页，只适合已确认可用且无需人工处理登录、验证码或机构认证的环境 |
 | `--delay` | 5 | 篇间等待秒数，避免触发风控 |
 
 **下载前务必确认：** 访问 https://www.cnki.net 显示机构名称（如「XX大学图书馆」）。
 
-`--manual-wait` 不负责详情页验证码，它只是在知网首页停留，方便少数环境确认机构 IP 或完成首页弹窗；默认值为 0，不做首页人工等待。某篇详情页中途弹出验证码时，不要停止脚本；在可见浏览器中完成验证，脚本会在 `--verify-wait` 内优先检测文章内容或 PDF 下载入口是否出现，并结合 URL、标题和正文判断是否仍在验证页，不会因为验证码页文字短暂变化就立刻重进详情页。若点击 PDF 后进入验证码，脚本会先退出下载事件等待，验证通过后再重新点击 PDF，避免验证完成后仍等待下载事件超时。若验证处理较晚，脚本还会在批量结束后按 `--retry-failed` 重试普通失败项。
+`--manual-wait` 用于知网首页停留，方便少数环境确认机构 IP 或完成首页弹窗；默认值为 0。某篇详情页中途弹出验证码时，在可见浏览器中完成验证，脚本会在 `--verify-wait` 内优先检测文章内容或 PDF 下载入口是否出现，并结合 URL、标题和正文判断是否仍在验证页。若点击 PDF 后进入验证码，脚本会先退出下载事件等待，验证通过后再重新点击 PDF。若验证处理较晚，脚本还会在批量结束后按 `--retry-failed` 重试普通失败项。
 
 如果某篇页面明确提示「付费下载」「购买」「余额不足」等，脚本会将该篇作为终态跳过，不放入重试队列，并从 `candidates.json` 中的未选文献追加替补；补位文献会分配新的 `cnki-XXX` ID，并保留 `original_id`。若某篇在普通失败重试阶段才被识别为付费，仍会触发候选池补位，并继续处理新补入文献。
 
@@ -313,15 +365,9 @@ python3 scripts/extract_pdf_text.py --workspace ./literature-review
 
 ---
 
-## 浏览器模式选择指南
+## 浏览器执行方式
 
-| 场景 | 推荐工具 | 原因 |
-|------|----------|------|
-| 自动批量检索+解析 | Playwright 脚本 | 结构化数据提取效率高 |
-| 知网页面反爬/验证码 | Playwright `headless=false` | 可人工介入完成验证 |
-| 交互式浏览/手动筛选 | agent-browser | snapshot + click 更直观 |
-| PDF 批量下载 | Playwright 脚本 | 自动 expect_download |
-| agent-browser 未安装 | Playwright 脚本 | 兜底方案 |
+CNKI 检索和下载均使用有界面 Playwright Chromium 窗口。验证码、机构认证和弹窗在该窗口内人工处理，脚本继续轮询页面状态。
 
 ---
 
@@ -332,10 +378,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple playwright pymupdf
 PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright python3 -m playwright install chromium
+```
 
-# 可选：交互式浏览器
-npm --registry=https://registry.npmmirror.com i -g agent-browser
-# 或: brew install agent-browser
+Windows PowerShell:
+
+```powershell
+py -3 -m venv .venv
+. .\.venv\Scripts\Activate.ps1
+py -3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple playwright pymupdf
+$env:PLAYWRIGHT_DOWNLOAD_HOST="https://npmmirror.com/mirrors/playwright"; py -3 -m playwright install chromium
 ```
 
 ---
@@ -346,8 +397,8 @@ npm --registry=https://registry.npmmirror.com i -g agent-browser
 |------|----------|------------|
 | 搜索 | DOM 选择器 `page.locator("td.name")` 解析失败 | `page.evaluate()` 直接提取 `td.textContent` |
 | 去重 | 单关键词覆盖不足，可能混入 K-12 噪声 | 使用多组关键词检索、去重，并启用 K-12 过滤 |
-| 筛选 | 人工逐条判断耗时 | 使用期刊白名单 + 主题关键词双维度自动打分 |
-| 筛选 | 筛选后多篇论文共享同一 ID（如 cnki-005），下载时互相覆盖 | `curate.py` 筛选后自动重新分配唯一 ID（cnki-001~cnki-N） |
+| 候选精选 | 人工逐条判断耗时 | 在已限定候选池内使用主题关键词评分、K-12 过滤和排序 |
+| 候选精选 | 多篇论文共享同一 ID（如 cnki-005），下载时互相覆盖 | `curate.py` 精选后自动重新分配唯一 ID（cnki-001~cnki-N） |
 | 下载 | ID 冲突导致部分 PDF 覆盖 | `cnki_download.py` 启动时检测重复 ID 并报错，`--clean` 清理旧文件 |
 | 下载 | 多次任务下载同一篇文献重复浪费 | 缓存机制：已存在的有效 PDF 标记 `cached` 跳过下载 |
 | 提取 | 不知道为什么要生成 txt 中间文件 | Read 工具只能读纯文本，PDF→txt 是必要中转 |

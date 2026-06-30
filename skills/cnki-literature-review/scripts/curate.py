@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""智能筛选：期刊质量 + 主题相关性双维度打分。"""
+"""候选精选：在已限定来源类别的候选池内按主题相关性择优。"""
 
 from __future__ import annotations
 
@@ -25,11 +25,10 @@ def parse_topic_keywords(topic: str) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="智能筛选文献")
+    parser = argparse.ArgumentParser(description="候选精选文献")
     parser.add_argument("--input", required=True)
     parser.add_argument("--topic", default="")
     parser.add_argument("--max", type=int, default=20)
-    parser.add_argument("--journal-list", default=None)
     parser.add_argument("--no-k12-filter", action="store_true")
     parser.add_argument("--sort-by", default="citations",
                         choices=["citations", "downloads", "relevance"])
@@ -37,8 +36,6 @@ def main() -> int:
 
     data = json.loads(Path(args.input).read_text(encoding="utf-8"))
     papers = data.get("papers", [])
-
-    journals = args.journal_list.split(",") if args.journal_list else []
 
     theme_kw = []
     if args.topic:
@@ -57,11 +54,10 @@ def main() -> int:
             print(f"  [K12] {title[:40]}...")
             continue
 
-        journal_ok = (not journals) or any(j in source for j in journals)
         relevance = sum(1 for kw in theme_kw if kw in title)
         topic_ok = relevance >= 1
 
-        if journal_ok and topic_ok:
+        if topic_ok:
             p["selected"] = True
             selected.append(p)
             print(f"  [+] [{p.get('year')}] {title[:50]}... | {source}")
